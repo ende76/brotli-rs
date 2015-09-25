@@ -1,0 +1,145 @@
+Analysis of xxxxxyyyyy.txt.gz
+
+Gzip Header
+===========
+
+0x1f                # fixed value ID1
+0x8b                # fixed value ID2
+                    # ID1 = 0x1f and ID2 = 0x8b identify the
+                    #     file as being in gzip format
+0x08                # CM => Compression method =
+                    #     8 denotes "deflate"
+0x08 = 0000 1000    # FLG => this byte sets a number of flags
+                    # FTEXT    = 0
+                    # FHCRC    = 0
+                    # FEXTRA   = 0
+                    # FNAME    = 1 =>
+                    #     an original file name is present,
+                    #     terminated by a zero byte
+                    # FCOMMENT = 0
+                    # reserved = 0
+                    # reserved = 0
+                    # reserved = 0
+0x8e 0x30 0x04 0x56 # MTIME 4 bytes
+                    # 142 + 256 * 48 + 256^2 * 4 + 256^3 * 86 = 1,443,115,150
+                    # => Thu Sep 24 2015 13:19:10 GMT-0400 (EDT)
+0x00                # XFL => no flags set(?)
+0x03                # OS = 3 => Unix
+0x78 0x78 0x78 0x78 0x78
+0x79 0x79 0x79 0x79 0x79
+0x2e 0x74 0x78 0x74 0x00
+                    # FNAME is set, so this is a zero-
+                    # termindated string containing the
+                    # original file name "xxxxxyyyyy.txt"
+
+Compressed blocks
+=================
+
+0xab = 1010 1011
+1                   # BFINAL => true, this is the last
+                    #           block of the data set
+01                  # BTYPE => compressed with fixed
+                    #          Huffman codes
+
+0xa8 = 1010 1000 [1010 1]
+
+                    # because this is now a Huffman code
+                    # section, we read the stream bit-by-bit
+                    # from the right, walking down the (in
+                    # this case fixed Huffman code tree, see
+                    # http://www.ietf.org/rfc/rfc1951.txt,
+                    # section 3.2.6)
+
+                    # after a length of 8 bits, we arrive
+                    # at a leaf with value 168 which
+                    # encodes the literal value 120
+10101000            #   10101000 (168)
+                    # - 00110000 ( 48)
+                    #   --------
+                    #   01111000 (120) => literal byte 'x'
+                    # output stream = "x"
+0x00 = 0000 0000 [1010 1]
+
+                    # now we read the next Huffman code
+10101000            # same result as before
+                    # => literal byte 'x'
+                    # output stream = "xx"
+
+0x82 = 1000 0010 [0000 0]
+
+0000001             # this time, the Huffman tree guides us
+                    # to a 7-bit code, which encodes the
+                    # literal value 257, which is a length
+                    # code for length 3, with no extra bits
+
+                    # since we have just read a length code,
+                    # we now expect a fixed-length 5-bit
+                    # distance code
+[1000 00]
+
+00000               # we arrive at code 0, which encodes
+                    # a distance of 1, with no extra bits
+
+                    # we now have a complete <length, distance>
+                    # command <3, 1>, telling us to go back
+                    # one byte, and then to copy 3 bytes
+                    # since length 3 would overlap the end
+                    # of the output stream, this section becomes
+                    # relevant:
+                    # "Note also that the referenced string may  "
+                    # "overlap the current position; for example,"
+                    # "if the last 2 bytes decoded have values   "
+                    # "X and Y, a string reference with          "
+                    # "<length = 5, distance = 2> adds           "
+                    # "X,Y,X,Y,X to the output stream.           "
+                    #
+                    # In our case, the output stream contains
+                    # "xx", and we are instructed to go back
+                    # 1 byte, and to copy 3 bytes, resulting
+                    # in:
+                    # output stream = "xxxxx"
+
+0x4a = 0100 1010 [1]
+                    # another Huffman code-read
+10101001            # 8-bit code, which decodes to
+                    #   10101001 (169)
+                    # - 00110000 ( 48)
+                    #   --------
+                    #    1111001 (121) => literal byte 'y'
+                    # output stream = "xxxxxy"
+
+0x10 = 0001 0000 [0]
+                    #
+0000 010            # decodes to 258 => length = 4, no extra bits
+
+0x00 = 0000 0000 [00]
+                    # read fixed-length, 5-bit distance
+00000               # code 0 => distance = 1, no extra bits
+                    # command <length = 4, distance = 1> on
+                    # output stream = "xxxxxy" yields
+                    # "yyyy" =>
+                    # output stream = "xxxxxyyyyy"
+
+0x00 = 0000 0000 [0000 0]
+
+0000000             # Code 0 => literal value 256,
+                    #     <END-OF-BLOCK>
+
+[0000 00]           # padding to align to byte boundary?
+
+
+Gzip Trailer
+============
+
+0x64 0xdd 0x62 0x42 # CRC32 value for the uncompressed data
+                    # (matches output on command line :
+                    #  $ crc32 xxxxxyyyyy.txt
+                    #  64dd6242)
+
+0x00 0x00 0x00 0x0a # ISIZE = 10 bytes (mod 2^32), which
+                    #     also checks out as the size of
+                    #     the input "xxxxxyyyyy"
+
+
+
+

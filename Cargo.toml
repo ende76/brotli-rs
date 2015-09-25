@@ -1,0 +1,4 @@
+[package]
+name = "compression"
+version = "0.1.0"
+authors = ["Ende <ende.mail@web.de>"]
