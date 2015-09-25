@@ -83,6 +83,11 @@ enum State {
 		fastest_algorithm: bool,
 	},
 	OS(u8),
+	FlagFExtra(bool),
+	XLen(u16),
+	FlagFName(bool),
+	FlagFComment(bool),
+	FlagFHCRC(bool),
 }
 
 
@@ -227,6 +232,30 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
+	fn read_xlen(&mut self) {
+		let mut buf = &mut[0u8, 0u8];
+
+		match (self.in_stream.read(buf), (buf[0], buf[1])) {
+			(Ok(2), (xlen8, xlen0)) => {
+				self.state = State::XLen(xlen0 as u16 | ((xlen8 as u16) << 8));
+			},
+			(Ok(_), _) => self.state = State::Error(DecompressorError::NeedMoreBytes),
+			(Err(e), _) => panic!(e),
+		}
+	}
+
+	fn read_extra_field(&mut self, len: u16) {
+		let mut buf = &mut vec![0u8; len as usize];
+
+		match self.in_stream.read(buf) {
+			Ok(bytes) if bytes == len as usize => {
+				self.state = State::FlagFName(self.flags.unwrap().fname);
+			},
+			Ok(_) => self.state = State::Error(DecompressorError::NeedMoreBytes),
+			Err(e) => panic!(e),
+		}
+	}
+
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
 		loop {
 			match self.get_state() {
@@ -262,7 +291,34 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::OS(os) => {
 					self.os = Some(os);
-					break;
+					self.state = State::FlagFExtra(self.flags.unwrap().fextra);
+				},
+				State::FlagFExtra(true) => {
+					self.read_xlen();
+				},
+				State::XLen(xlen) => {
+					self.read_extra_field(xlen);
+				},
+				State::FlagFExtra(false) => {
+					self.state = State::FlagFName(self.flags.unwrap().fname);
+				},
+				State::FlagFName(true) => {
+					panic!("Read file name now");
+				},
+				State::FlagFName(false) => {
+					panic!("Do NOT read file name now");
+				},
+				State::FlagFComment(true) => {
+					panic!("Read comment now");
+				},
+				State::FlagFComment(false) => {
+					panic!("Do NOT read comment now");
+				},
+				State::FlagFHCRC(true) => {
+					panic!("Read CRC16 now");
+				},
+				State::FlagFHCRC(false) => {
+					panic!("Do NOT read CRC16 now");
 				},
 				State::Error(ref e) => {
 					panic!(e.clone())
