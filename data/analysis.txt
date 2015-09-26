@@ -21,7 +21,7 @@ Gzip Header
                     # reserved = 0
                     # reserved = 0
 0x8e 0x30 0x04 0x56 # MTIME 4 bytes
-                    # 142 + 256 * 48 + 256^2 * 4 + 256^3 * 86 = 1,443,115,150
+                    # 159 + 256 * 48 + 256^2 * 4 + 256^3 * 86 = 1,443,115,167
                     # => Thu Sep 24 2015 13:19:10 GMT-0400 (EDT)
 0x00                # XFL => no flags set(?)
 0x03                # OS = 3 => Unix
