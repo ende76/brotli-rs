@@ -5,6 +5,7 @@ use std::fmt::{ Display, Formatter };
 use std::io;
 use std::io::Read;
 use std::result;
+use std::string::String;
 use std::vec::Vec;
 
 const BYTE_IDENTIFIER1_GZIP: u8 = 0x1f;
@@ -25,7 +26,10 @@ const BYTE_COMPRESSION_METHOD_DEFLATE: u8 = 0x08;
 /// let mut gzip = Decompressor::new(f);
 pub struct Decompressor<R> {
 	buf: VecDeque<u8>,
+	comment: Option<String>,
+	crc16: Option<u16>,
 	extra_flags: Option<ExtraFlags>,
+	filename: Option<String>,
 	flags: Option<Flags>,
 	in_buf: Vec<u8>,
 	in_stream: R,
@@ -83,11 +87,15 @@ enum State {
 		fastest_algorithm: bool,
 	},
 	OS(u8),
-	FlagFExtra(bool),
+	FlagFExtra,
 	XLen(u16),
+	ExtraField(usize),
 	FlagFName(bool),
+	Filename(String),
 	FlagFComment(bool),
+	Comment(String),
 	FlagFHCRC(bool),
+	CRC16(u16),
 }
 
 
@@ -123,7 +131,10 @@ impl<R: Read> Decompressor<R> {
 	pub fn new(in_stream: R) -> Decompressor<R> {
 		Decompressor{
 			buf: VecDeque::new(),
+			comment: None,
+			crc16: None,
 			extra_flags: None,
+			filename: None,
 			flags: None,
 			in_buf: Vec::new(),
 			in_stream: in_stream,
@@ -249,11 +260,64 @@ impl<R: Read> Decompressor<R> {
 
 		match self.in_stream.read(buf) {
 			Ok(bytes) if bytes == len as usize => {
-				self.state = State::FlagFName(self.flags.unwrap().fname);
+				self.state = State::ExtraField(bytes);
 			},
 			Ok(_) => self.state = State::Error(DecompressorError::NeedMoreBytes),
 			Err(e) => panic!(e),
 		}
+	}
+
+	fn read_filename(&mut self) {
+		let mut buf  = &mut vec![0u8];
+		let mut v = Vec::new();
+
+		loop {
+			match (self.in_stream.read(buf), buf[0]) {
+				(Ok(1), 0) => break,
+				(Ok(1), byte) => {
+					v.push(byte);
+				},
+				(Ok(_), _) => self.state = State::Error(DecompressorError::NeedMoreBytes),
+				(Err(e), _) => panic!(e),
+			}
+		}
+
+		self.state = State::Filename(String::from_utf8(v).unwrap());
+	}
+
+	fn read_comment(&mut self) {
+		let mut buf  = &mut vec![0u8];
+		let mut v = Vec::new();
+
+		loop {
+			match (self.in_stream.read(buf), buf[0]) {
+				(Ok(1), 0) => break,
+				(Ok(1), byte) => {
+					v.push(byte);
+				},
+				(Ok(_), _) => self.state = State::Error(DecompressorError::NeedMoreBytes),
+				(Err(e), _) => panic!(e),
+			}
+		}
+
+		self.state = State::Comment(String::from_utf8(v).unwrap());
+	}
+
+	fn read_crc16(&mut self) {
+		let mut buf = &mut[0u8, 0u8];
+
+		match (self.in_stream.read(buf), (buf[0], buf[1])) {
+			(Ok(2), (crc168, crc160)) => {
+				self.state = State::CRC16(crc160 as u16 | ((crc168 as u16) << 8));
+			},
+			(Ok(_), _) => self.state = State::Error(DecompressorError::NeedMoreBytes),
+			(Err(e), _) => panic!(e),
+		}
+	}
+
+	fn process_compressed_blocks(&mut self) {
+
+		panic!("I guess I actually have to decompress now…");
 	}
 
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
@@ -291,38 +355,65 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::OS(os) => {
 					self.os = Some(os);
-					self.state = State::FlagFExtra(self.flags.unwrap().fextra);
+					self.state = State::FlagFExtra;
 				},
-				State::FlagFExtra(true) => {
-					self.read_xlen();
+				State::FlagFExtra => {
+					if self.flags.as_ref().unwrap().fextra {
+
+						self.read_xlen();
+					} else {
+
+						self.state = State::FlagFName(self.flags.as_ref().unwrap().fname);
+					}
 				},
 				State::XLen(xlen) => {
+
 					self.read_extra_field(xlen);
 				},
-				State::FlagFExtra(false) => {
-					self.state = State::FlagFName(self.flags.unwrap().fname);
+				State::ExtraField(xlen) => {
+
+					self.state = State::FlagFName(self.flags.as_ref().unwrap().fname);
 				},
 				State::FlagFName(true) => {
-					panic!("Read file name now");
+
+					self.read_filename();
+				},
+				State::Filename(filename) => {
+					self.filename = Some(filename);
+					self.state = State::FlagFComment(self.flags.as_ref().unwrap().fcomment);
 				},
 				State::FlagFName(false) => {
-					panic!("Do NOT read file name now");
+
+					self.state = State::FlagFComment(self.flags.as_ref().unwrap().fcomment);
 				},
 				State::FlagFComment(true) => {
-					panic!("Read comment now");
+
+					self.read_comment();
 				},
+				State::Comment(comment) => {
+					self.comment = Some(comment);
+					self.state = State::FlagFHCRC(self.flags.as_ref().unwrap().fcomment);
+				}
 				State::FlagFComment(false) => {
-					panic!("Do NOT read comment now");
+
+					self.state = State::FlagFHCRC(self.flags.as_ref().unwrap().fhcrc);
 				},
 				State::FlagFHCRC(true) => {
-					panic!("Read CRC16 now");
+
+					self.read_crc16()
+				},
+				State::CRC16(crc16) => {
+					self.crc16 = Some(crc16);
+					self.process_compressed_blocks();
 				},
 				State::FlagFHCRC(false) => {
-					panic!("Do NOT read CRC16 now");
+
+					self.process_compressed_blocks();
 				},
 				State::Error(ref e) => {
+
 					panic!(e.clone())
-				}
+				},
 			};
 		}
 
