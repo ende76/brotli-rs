@@ -34,7 +34,9 @@ const EXTRA_FLAG_FASTEST_ALGORITHM: u8   = 4;
 /// let mut f = try!(File::open("compressed.txt.gz"));
 /// let mut gzip = Decompressor::new(f);
 pub struct Decompressor<R> {
-	buf: VecDeque<u8>,
+	bfinal: Option<BFinal>,
+	btype: Option<BType>,
+	buf: Vec<u8>,
 	crc16: Option<CRC16>,
 	extra_flags: Option<ExtraFlags>,
 	file_comment: Option<FileComment>,
@@ -44,6 +46,7 @@ pub struct Decompressor<R> {
 	in_buf: VecDeque<u8>,
 	in_stream: R,
 	mtime: Option<MTime>,
+	next_bit: u8,
 	os: Option<OS>,
 	state: State,
 	xlen: Option<XLen>,
@@ -99,50 +102,14 @@ type XLen = u16;
 type FileName = String;
 type FileComment = String;
 type CRC16 = u16;
-
-enum DecompressorSuccess {
-	Identification(Identification),
-	CompressionMethod(CompressionMethod),
-	Flags(Flags),
-	MTime(MTime),
-	ExtraFlags(ExtraFlags),
-	OS(OS),
-	XLen(XLen),
-	ExtraField,
-	FileName(FileName),
-	FileComment(FileComment),
-	CRC16(CRC16),
-}
+type BFinal = bool;
 
 #[derive(Debug, Clone, PartialEq)]
-enum DecompressorError {
-	NeedMoreBytes,
-	NonZeroReservedFlag,
-	NonZeroReservedExtraFlag,
-	UnknownCompressionMethod,
-	UnknownIdentification,
-	UnknownOS,
+enum BType {
+	NoCompression,
+	CompressedWithFixedHuffmanCodes,
+	CompressedWithDynamicHuffmanCodes,
 }
-
-impl Display for DecompressorError {
-	fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
-		fmt.write_str(self.description())
-	}
-}
-
-impl Error for DecompressorError {
-	fn description(&self) -> &str {
-		match self {
-			&DecompressorError::NeedMoreBytes => "Need more bytes",
-			&DecompressorError::NonZeroReservedFlag => "Non-zero reserved flag in gzip header",
-			&DecompressorError::NonZeroReservedExtraFlag => "Non-zero reserved extra-flag in gzip header",
-			&DecompressorError::UnknownCompressionMethod => "Unknown compression method in gzip header",
-			&DecompressorError::UnknownIdentification => "Unknown identification in gzip header (not a gzip file)",
-			&DecompressorError::UnknownOS => "Unknown OS identification in gzip header",
-		}
-	}
-}
-
 
 #[derive(Debug, Clone, PartialEq)]
 enum State {
@@ -170,13 +137,66 @@ enum State {
 	FileComment(FileComment),
 	ParsingCRC16(bool),
 	CRC16(CRC16),
-	ParsingCompressedBlock,
+	ParsingBFinal,
+	BFinal(BFinal),
+	ParsingBType,
+	BType(BType),
 }
+
+enum DecompressorSuccess {
+	Identification(Identification),
+	CompressionMethod(CompressionMethod),
+	Flags(Flags),
+	MTime(MTime),
+	ExtraFlags(ExtraFlags),
+	OS(OS),
+	XLen(XLen),
+	ExtraField,
+	FileName(FileName),
+	FileComment(FileComment),
+	CRC16(CRC16),
+	BFinal(BFinal),
+	BType(BType),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum DecompressorError {
+	NeedMoreBytes,
+	NonZeroReservedFlag,
+	NonZeroReservedExtraFlag,
+	ReservedBType,
+	UnknownCompressionMethod,
+	UnknownIdentification,
+	UnknownOS,
+}
+
+impl Display for DecompressorError {
+	fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+		fmt.write_str(self.description())
+	}
+}
+
+impl Error for DecompressorError {
+	fn description(&self) -> &str {
+		match self {
+			&DecompressorError::NeedMoreBytes => "Need more bytes",
+			&DecompressorError::NonZeroReservedFlag => "Non-zero reserved flag in gzip header",
+			&DecompressorError::NonZeroReservedExtraFlag => "Non-zero reserved extra-flag in gzip header",
+			&DecompressorError::ReservedBType => "Reserved BType in deflate block header",
+			&DecompressorError::UnknownCompressionMethod => "Unknown compression method in gzip header",
+			&DecompressorError::UnknownIdentification => "Unknown identification in gzip header (not a gzip file)",
+			&DecompressorError::UnknownOS => "Unknown OS identification in gzip header",
+		}
+	}
+}
+
 
 impl<R: Read> Decompressor<R> {
 	pub fn new(in_stream: R) -> Decompressor<R> {
 		Decompressor{
-			buf: VecDeque::new(),
+			bfinal: None,
+			btype: None,
+			buf: Vec::new(),
 			crc16: None,
 			extra_flags: None,
 			file_comment: None,
@@ -185,6 +205,7 @@ impl<R: Read> Decompressor<R> {
 			identification: None,
 			in_buf: VecDeque::new(),
 			in_stream: in_stream,
+			next_bit: 0,
 			mtime: None,
 			os: None,
 			state: State::Initialized,
@@ -405,6 +426,54 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
+	fn parse_bfinal(ref mut buf: &mut VecDeque<u8>, mut next_bit: &mut u8) -> result::Result<DecompressorSuccess, DecompressorError> {
+		if buf.len() < 1 {
+
+			Err(DecompressorError::NeedMoreBytes)
+		} else {
+			let b = if *next_bit == 7 {
+				buf.pop_front().unwrap()
+			} else {
+				buf[0]
+			};
+			let bit_mask = 1u8 << *next_bit;
+
+			*next_bit += 1;
+
+			Ok(DecompressorSuccess::BFinal(b & bit_mask > 0))
+		}
+	}
+
+	fn parse_btype(ref mut buf: &mut VecDeque<u8>, mut next_bit: &mut u8) -> result::Result<DecompressorSuccess, DecompressorError> {
+		if buf.len() < 1 || (buf.len() < 2 && *next_bit == 7) {
+
+			Err(DecompressorError::NeedMoreBytes)
+		} else {
+			let b0 = if *next_bit == 7 {
+				buf.pop_front().unwrap()
+			} else {
+				buf[0]
+			};
+			let bit_mask0 = 1u8 << *next_bit;
+			*next_bit += 1;
+
+			let b1 = if *next_bit == 7 {
+				buf.pop_front().unwrap()
+			} else {
+				buf[0]
+			};
+			let bit_mask1 = 1u8 << *next_bit;
+			*next_bit += 1;
+
+			match (b1 & bit_mask1, b0 & bit_mask0) {
+				(0, 0) => Ok(DecompressorSuccess::BType(BType::NoCompression)),
+				(0, _) => Ok(DecompressorSuccess::BType(BType::CompressedWithFixedHuffmanCodes)),
+				(_, 0) => Ok(DecompressorSuccess::BType(BType::CompressedWithDynamicHuffmanCodes)),
+				(_, _) => Err(DecompressorError::ReservedBType),
+			}
+		}
+	}
+
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
 		loop {
 			match self.state.clone() {
@@ -546,7 +615,7 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::ParsingCRC16(false) => {
 
-					self.state = State::ParsingCompressedBlock;
+					self.state = State::ParsingBFinal;
 				},
 				State::ParsingCRC16(true) => {
 					match Self::parse_crc16(&mut self.in_buf) {
@@ -557,19 +626,39 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::CRC16(crc16) => {
 					self.crc16 = Some(crc16);
-					self.state = State::ParsingCompressedBlock;
+					self.state = State::ParsingBFinal;
 				},
-				State::ParsingCompressedBlock => {
+				State::ParsingBFinal => {
+					match Self::parse_bfinal(&mut self.in_buf, &mut self.next_bit) {
+						Ok(DecompressorSuccess::BFinal(bfinal)) => self.state = State::BFinal(bfinal),
+						Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
+						_ => unreachable!(),
+					}
+				},
+				State::BFinal(bfinal) => {
+					self.bfinal = Some(bfinal);
+					self.state = State::ParsingBType;
+				},
+				State::ParsingBType => {
+					match Self::parse_btype(&mut self.in_buf, &mut self.next_bit) {
+						Ok(DecompressorSuccess::BType(btype)) => self.state = State::BType(btype),
+						Err(DecompressorError::ReservedBType) => self.state = State::Error(DecompressorError::ReservedBType, Box::new(self.state.clone())),
+						Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
+						_ => unreachable!(),
+					}
+				},
+				State::BType(btype) => {
+					self.btype = Some(btype);
+
+					println!("{:?}", (&self.bfinal, &self.btype));
 					unimplemented!();
 				},
 				state => {
 					assert_eq!(State::Initialized, state);
-					panic!("uncaught state");
+					panic!(state);
 				}
 			};
 		}
-
-		Ok(0)
 	}
 }
 
@@ -592,7 +681,7 @@ impl<R: Read> Read for Decompressor<R> {
 
 		for i in 0..l {
 
-			buf[i] = self.buf.pop_front().unwrap();
+			buf[i] = self.buf.pop().unwrap();
 		}
 
 		Ok(l)
