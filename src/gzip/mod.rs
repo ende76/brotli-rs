@@ -37,6 +37,7 @@ pub struct Decompressor<R> {
 	bfinal: Option<BFinal>,
 	btype: Option<BType>,
 	buf: Vec<u8>,
+	codes: Option<Vec<usize>>,
 	crc16: Option<CRC16>,
 	extra_flags: Option<ExtraFlags>,
 	file_comment: Option<FileComment>,
@@ -141,6 +142,10 @@ enum State {
 	BFinal(BFinal),
 	ParsingBType,
 	BType(BType),
+	NoCompressionParsingLen,
+	ParsingCodeTrees,
+	CreatingFixedHuffmanCodes,
+	ParsingCode,
 }
 
 enum DecompressorSuccess {
@@ -197,6 +202,7 @@ impl<R: Read> Decompressor<R> {
 			bfinal: None,
 			btype: None,
 			buf: Vec::new(),
+			codes: None,
 			crc16: None,
 			extra_flags: None,
 			file_comment: None,
@@ -650,7 +656,20 @@ impl<R: Read> Decompressor<R> {
 				State::BType(btype) => {
 					self.btype = Some(btype);
 
-					println!("{:?}", (&self.bfinal, &self.btype));
+					match self.btype {
+						Some(BType::NoCompression) => self.state = State::NoCompressionParsingLen,
+						Some(BType::CompressedWithDynamicHuffmanCodes) => self.state = State::ParsingCodeTrees,
+						Some(BType::CompressedWithFixedHuffmanCodes) => self.state = State::CreatingFixedHuffmanCodes,
+						_ => unreachable!(),
+					}
+				},
+				State::NoCompressionParsingLen => {
+					unimplemented!();
+				},
+				State::ParsingCodeTrees => {
+					unimplemented!();
+				},
+				State::CreatingFixedHuffmanCodes => {
 					unimplemented!();
 				},
 				state => {
