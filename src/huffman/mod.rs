@@ -1,3 +1,5 @@
+pub mod tree;
+
 fn bit_string_from_code_and_length(code: usize, len: usize) -> Vec<bool> {
 	let mut bits = vec![false; len];
 
