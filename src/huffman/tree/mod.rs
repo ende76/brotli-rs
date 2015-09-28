@@ -1,15 +1,15 @@
 /// For Huffman codes used in the Deflate spec, is seems that the length of a code is at most 9 bits.
 /// For this simple use case, we don't need/want to deal with type parameters.
-type Symbol = u16;
+pub type Symbol = u16;
 
 #[derive(Debug, Clone, PartialEq)]
-struct Node {
+pub struct Node {
 	left: Option<Box<Tree>>,
 	right: Option<Box<Tree>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Tree {
+pub enum Tree {
 	Leaf(Symbol),
 	Inner(Node),
 }
@@ -91,6 +91,27 @@ impl Tree {
 					&mut Tree::Leaf(_) => unreachable!(),
 				}
 			}
+		}
+	}
+
+	fn lookup(&mut self, c: bool) -> Option<Tree> {
+		match self {
+			&mut Tree::Leaf(_) => None,
+			&mut Tree::Inner(Node{
+				ref left,
+				ref right
+			}) =>
+				if c {
+					match *right {
+						Some(ref boxed_tree) => Some((**boxed_tree).clone()),
+						None => None,
+					}
+				} else {
+					match *left {
+						Some(ref boxed_tree) => Some((**boxed_tree).clone()),
+						None => None,
+					}
+				}
 		}
 	}
 }
@@ -198,6 +219,59 @@ mod tests {
 				right: None,
 			}))),
 		}), tree);
+	}
+
+	#[test]
+	fn should_lookup_first_level_leaf_left() {
+		use super::{ Tree, Node };
+		use super::Tree::{ Inner, Leaf };
+
+		let mut tree = Tree::new();
+		tree.insert(vec![true, false], 6666);
+		tree.insert(vec![false], 666);
+		tree.insert(vec![true, true], 6667);
+
+		assert_eq!(Some(Leaf(666)), tree.lookup(false));
+	}
+
+	#[test]
+	fn should_lookup_first_level_leaf_right() {
+		use super::{ Tree, Node };
+		use super::Tree::{ Inner, Leaf };
+
+		let mut tree = Tree::new();
+		tree.insert(vec![false, false], 6666);
+		tree.insert(vec![true], 666);
+		tree.insert(vec![false, true], 6667);
+
+		assert_eq!(Some(Leaf(666)), tree.lookup(true));
+	}
+
+	#[test]
+	fn should_lookup_first_level_node_left() {
+		use super::{ Tree, Node };
+		use super::Tree::{ Inner, Leaf };
+
+		let mut tree = Tree::new();
+		tree.insert(vec![false, false], 6666);
+		tree.insert(vec![true], 666);
+		tree.insert(vec![false, true], 6667);
+
+		assert_eq!(Some(Inner(Node{
+			left: Some(Box::new(Tree::Leaf(6666))),
+			right: Some(Box::new(Tree::Leaf(6667))),
+		})), tree.lookup(false));
+	}
+
+	#[test]
+	fn should_result_in_none() {
+		use super::{ Tree, Node };
+		use super::Tree::{ Inner, Leaf };
+
+		let mut tree = Tree::new();
+		tree.insert(vec![true], 666);
+
+		assert_eq!(None, tree.lookup(false));
 	}
 }
 
