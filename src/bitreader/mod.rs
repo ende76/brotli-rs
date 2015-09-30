@@ -62,6 +62,14 @@ impl<R: Read> BitReader<R> {
 			Err(_) => Err(BitReaderError::Other),
 		}
 	}
+
+	pub fn read_bit(&mut self) -> Result<bool, BitReaderError> {
+		let mut buf = &mut [0u8; 1];
+		match self.read_exact(buf) {
+			Ok(()) => Ok(buf[0] & 1 == 1),
+			Err(_) => Err(BitReaderError::Other),
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,6 +130,19 @@ mod tests {
 		match br.read_u16() {
 			Ok(my_u16) => assert_eq!(expected, my_u16),
 			_ => panic!("Should have read one u16"),
+		}
+	}
+
+	#[test]
+	fn should_read_one_set_bit() {
+		use std::io::{ Cursor };
+
+		let expected = true;
+		let mut br = BitReader::new(Cursor::new(vec![3]));
+
+		match br.read_bit() {
+			Ok(my_bit) => assert!(my_bit),
+			_ => panic!("Should have read one set bit"),
 		}
 	}
 }
