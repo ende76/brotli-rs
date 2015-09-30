@@ -75,6 +75,13 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	pub fn read_u32(&mut self) -> Result<u32, BitReaderError> {
+		match (self.read_u16(), self.read_u16()) {
+			(Ok(my_u16_0), Ok(my_u16_1)) => Ok((my_u16_1 as u32) << 16 | (my_u16_0 as u32)),
+			(_, _) => Err(BitReaderError::Unspecified),
+		}
+	}
+
 	pub fn read_bit(&mut self) -> Result<bool, BitReaderError> {
 		match (self.current_byte, self.bit_pos) {
 			(Some(byte), bit_pos) => {
@@ -231,4 +238,23 @@ mod tests {
 			},
 			_ => panic!("Should have read one set bit and one u16"),
 		}
-	}}
+	}
+
+	#[test]
+	fn should_read_u32() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0x8e, 0x30, 0x04, 0x56]));
+
+		match br.read_u32() {
+			Ok(my_u32) => {
+				assert_eq!(0x5604308e, my_u32);
+			},
+			_ => panic!("Should have read one u32"),
+		}
+	}
+}
+
+
+
