@@ -15,14 +15,14 @@ pub enum Tree {
 }
 
 impl Tree {
-	fn new() -> Tree {
+	pub fn new() -> Tree {
 		Tree::Inner(Node{
 			left: None,
 			right: None,
 		})
 	}
 
-	fn insert(&mut self, code: Vec<bool>, symbol: Symbol) {
+	pub fn insert(&mut self, code: Vec<bool>, symbol: Symbol) {
 		if code.len() == 1 {
 			if code[0] {
 				*self = Tree::Inner(Node{
@@ -94,7 +94,7 @@ impl Tree {
 		}
 	}
 
-	fn lookup(&mut self, c: bool) -> Option<Tree> {
+	pub fn lookup(&mut self, c: bool) -> Option<Tree> {
 		match self {
 			&mut Tree::Leaf(_) => None,
 			&mut Tree::Inner(Node{

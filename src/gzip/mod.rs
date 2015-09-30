@@ -1,3 +1,5 @@
+use ::huffman;
+
 use std::collections::VecDeque;
 use std::error::Error;
 use std::fmt;
@@ -37,12 +39,13 @@ pub struct Decompressor<R> {
 	bfinal: Option<BFinal>,
 	btype: Option<BType>,
 	buf: Vec<u8>,
-	codes: Option<Vec<usize>>,
 	crc16: Option<CRC16>,
+	current_symbol: Option<*const HuffmanCodes>,
 	extra_flags: Option<ExtraFlags>,
 	file_comment: Option<FileComment>,
 	file_name: Option<FileName>,
 	flags: Option<Flags>,
+	huffman_codes: Option<HuffmanCodes>,
 	identification: Option<Identification>,
 	in_buf: VecDeque<u8>,
 	in_stream: R,
@@ -112,6 +115,9 @@ enum BType {
 	CompressedWithDynamicHuffmanCodes,
 }
 
+type Symbol = u16;
+type HuffmanCodes = huffman::tree::Tree;
+
 #[derive(Debug, Clone, PartialEq)]
 enum State {
 	Error(DecompressorError, Box<State>),
@@ -145,7 +151,9 @@ enum State {
 	NoCompressionParsingLen,
 	ParsingCodeTrees,
 	CreatingFixedHuffmanCodes,
-	ParsingCode,
+	HuffmanCodes(HuffmanCodes),
+	ParsingNextSymbol,
+	Symbol(Symbol),
 }
 
 enum DecompressorSuccess {
@@ -162,6 +170,7 @@ enum DecompressorSuccess {
 	CRC16(CRC16),
 	BFinal(BFinal),
 	BType(BType),
+	Symbol(Symbol),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -195,19 +204,19 @@ impl Error for DecompressorError {
 	}
 }
 
-
 impl<R: Read> Decompressor<R> {
 	pub fn new(in_stream: R) -> Decompressor<R> {
 		Decompressor{
 			bfinal: None,
 			btype: None,
 			buf: Vec::new(),
-			codes: None,
 			crc16: None,
+			current_symbol: None,
 			extra_flags: None,
 			file_comment: None,
 			file_name: None,
 			flags: None,
+			huffman_codes: None,
 			identification: None,
 			in_buf: VecDeque::new(),
 			in_stream: in_stream,
@@ -301,7 +310,6 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-
 	fn parse_extra_flags(ref mut buf: &mut VecDeque<u8>) -> result::Result<DecompressorSuccess, DecompressorError> {
 		if buf.len() < 1 {
 
@@ -324,7 +332,6 @@ impl<R: Read> Decompressor<R> {
 			}
 		}
 	}
-
 
 	fn parse_os(ref mut buf: &mut VecDeque<u8>) -> result::Result<DecompressorSuccess, DecompressorError> {
 		if buf.len() < 1 {
@@ -444,7 +451,7 @@ impl<R: Read> Decompressor<R> {
 			};
 			let bit_mask = 1u8 << *next_bit;
 
-			*next_bit += 1;
+			*next_bit = (*next_bit + 1) % 8;
 
 			Ok(DecompressorSuccess::BFinal(b & bit_mask > 0))
 		}
@@ -476,6 +483,28 @@ impl<R: Read> Decompressor<R> {
 				(0, _) => Ok(DecompressorSuccess::BType(BType::CompressedWithFixedHuffmanCodes)),
 				(_, 0) => Ok(DecompressorSuccess::BType(BType::CompressedWithDynamicHuffmanCodes)),
 				(_, _) => Err(DecompressorError::ReservedBType),
+			}
+		}
+	}
+
+	fn create_fixed_huffman_codes() -> HuffmanCodes {
+		let lengths = [vec!(8; 144), vec!(9; 112), vec!(7; 24), vec!(8; 8)].concat();
+
+		huffman::codes_from_lengths(lengths)
+	}
+
+	fn parse_next_symbol(&mut self) -> result::Result<DecompressorSuccess, DecompressorError> {
+		if self.in_buf.len() < 1 {
+
+			Err(DecompressorError::NeedMoreBytes)
+		} else {
+			if self.current_symbol == None {
+
+				self.current_symbol = Some(self.huffman_codes.as_ref().unwrap() as *const HuffmanCodes);
+			}
+
+			loop {
+
 			}
 		}
 	}
@@ -670,6 +699,20 @@ impl<R: Read> Decompressor<R> {
 					unimplemented!();
 				},
 				State::CreatingFixedHuffmanCodes => {
+					self.state = State::HuffmanCodes(Self::create_fixed_huffman_codes());
+				},
+				State::HuffmanCodes(huffman_codes) => {
+					self.huffman_codes = Some(huffman_codes);
+					self.state = State::ParsingNextSymbol;
+				},
+				State::ParsingNextSymbol => {
+					match self.parse_next_symbol() {
+						Ok(DecompressorSuccess::Symbol(symbol)) => self.state = State::Symbol(symbol),
+						Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
+						_ => unreachable!(),
+					}
+				},
+				State::Symbol(symbol) => {
 					unimplemented!();
 				},
 				state => {
