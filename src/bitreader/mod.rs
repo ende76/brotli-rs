@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::{ Display, Formatter };
 use std::io;
-use std::io::{ BufRead, BufReader, ErrorKind, Read };
+use std::io::{ BufReader, ErrorKind, Read };
 use std::result::Result;
 
 /// Wrapper for a Reader, providing convenience methods to read the stream bit-by-bit.
@@ -120,11 +120,10 @@ impl Error for BitReaderError {
 }
 
 mod tests {
-	use super::*;
-
 	#[test]
 	fn should_read_one_u8() {
-		use std::io::{ BufRead, BufReader, Cursor };
+		use super::*;
+		use std::io::{ Cursor };
 
 		let expected = 0x1f;
 		let mut br = BitReader::new(Cursor::new(vec![expected, 0x8b]));
@@ -137,6 +136,7 @@ mod tests {
 
 	#[test]
 	fn should_read_two_u8() {
+		use super::*;
 		use std::io::{ Cursor };
 
 		let (expected0, expected1) = (0x1f, 0x8b);
@@ -150,6 +150,7 @@ mod tests {
 
 	#[test]
 	fn should_read_one_u16() {
+		use super::*;
 		use std::io::{ Cursor };
 
 		let expected = 0x8b1f;
@@ -163,6 +164,7 @@ mod tests {
 
 	#[test]
 	fn should_read_one_set_bit() {
+		use super::*;
 		use std::io::{ Cursor };
 
 		let mut br = BitReader::new(Cursor::new(vec![3]));
@@ -174,22 +176,34 @@ mod tests {
 	}
 
 	#[test]
-	fn should_read_two_bits() {
+	fn should_read_some_bits() {
+		use super::*;
 		use std::io::{ Cursor };
 
-		let mut br = BitReader::new(Cursor::new(vec![2]));
+		let mut br = BitReader::new(Cursor::new(vec![134, 1]));
 
-		match (br.read_bit(), br.read_bit()) {
-			(Ok(my_bit_0), Ok(my_bit_1)) => {
+		match (br.read_bit(), br.read_bit(), br.read_bit(), br.read_bit(), br.read_bit(),
+		       br.read_bit(), br.read_bit(), br.read_bit(), br.read_bit(), br.read_bit()) {
+			(Ok(my_bit_0), Ok(my_bit_1), Ok(my_bit_2), Ok(my_bit_3), Ok(my_bit_4),
+			 Ok(my_bit_5), Ok(my_bit_6), Ok(my_bit_7), Ok(my_bit_8), Ok(my_bit_9)) => {
 				assert!(!my_bit_0);
 				assert!(my_bit_1);
+				assert!(my_bit_2);
+				assert!(!my_bit_3);
+				assert!(!my_bit_4);
+				assert!(!my_bit_5);
+				assert!(!my_bit_6);
+				assert!(my_bit_7);
+				assert!(my_bit_8);
+				assert!(!my_bit_9);
 			},
-			_ => panic!("Should have read one unset bit and one set bit"),
+			_ => panic!("Should have read 10 bits"),
 		}
 	}
 
 	#[test]
 	fn should_read_u8_after_bit() {
+		use super::*;
 		use std::io::{ Cursor };
 
 		let mut br = BitReader::new(Cursor::new(vec![0b10001101, 0b00010101]));
@@ -205,6 +219,7 @@ mod tests {
 
 	#[test]
 	fn should_read_u16_after_bit() {
+		use super::*;
 		use std::io::{ Cursor };
 
 		let mut br = BitReader::new(Cursor::new(vec![0b10001101, 0b00010101, 0b00010101]));
