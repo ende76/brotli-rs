@@ -21,6 +21,7 @@ use std::result::Result;
 pub struct BitReader<R: Read> {
 	inner: BufReader<R>,
 	bit_pos: u8,
+	current_byte: Option<u8>,
 }
 
 impl<R: Read> BitReader<R> {
@@ -28,6 +29,7 @@ impl<R: Read> BitReader<R> {
 		BitReader{
 			inner: BufReader::new(inner),
 			bit_pos: 0,
+			current_byte: None,
 		}
 	}
 
@@ -49,32 +51,58 @@ impl<R: Read> BitReader<R> {
 
 	pub fn read_u8(&mut self) -> Result<u8, BitReaderError> {
 		let mut buf = &mut [0u8];
-		match self.read_exact(buf) {
-			Ok(()) => Ok(buf[0]),
-			Err(_) => Err(BitReaderError::Other),
+
+		match (self.current_byte, self.read_exact(buf)) {
+			(Some(byte), Ok(())) => {
+				self.current_byte = Some(buf[0]);
+				Ok((byte >> self.bit_pos) | (buf[0] << (8 - self.bit_pos)))
+			},
+			(None, Ok(())) => Ok(buf[0]),
+			(_, Err(_)) => Err(BitReaderError::Unspecified),
 		}
 	}
 
 	pub fn read_u16(&mut self) -> Result<u16, BitReaderError> {
 		let mut buf = &mut [0u8; 2];
-		match self.read_exact(buf) {
-			Ok(()) => Ok(((buf[1] as u16) << 8) | (buf[0] as u16)),
-			Err(_) => Err(BitReaderError::Other),
+
+		match (self.current_byte, self.read_exact(buf)) {
+			(Some(byte), Ok(())) => {
+				self.current_byte = Some(buf[1]);
+				Ok(((byte as u16) >> self.bit_pos) | ((buf[0] as u16) << (8 - self.bit_pos)) | ((buf[1] as u16) << (16 - self.bit_pos)))
+			},
+			(None, Ok(())) => Ok(((buf[1] as u16) << 8) | (buf[0] as u16)),
+			(_, Err(_)) => Err(BitReaderError::Unspecified),
 		}
 	}
 
 	pub fn read_bit(&mut self) -> Result<bool, BitReaderError> {
-		let mut buf = &mut [0u8; 1];
-		match self.read_exact(buf) {
-			Ok(()) => Ok(buf[0] & 1 == 1),
-			Err(_) => Err(BitReaderError::Other),
+		match (self.current_byte, self.bit_pos) {
+			(Some(byte), bit_pos) => {
+				self.bit_pos = (self.bit_pos + 1) % 8;
+				if self.bit_pos == 0 {
+					self.current_byte = None;
+				}
+				Ok(byte >> bit_pos & 1 == 1)
+			},
+			(None, _) => {
+				let mut buf = &mut [0u8; 1];
+				match self.read_exact(buf) {
+					Ok(()) => {
+						self.current_byte = Some(buf[0]);
+						self.bit_pos = 1;
+						Ok(buf[0] & 1 == 1)
+					},
+					Err(_) => Err(BitReaderError::Unspecified),
+				}
+			}
 		}
+
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BitReaderError {
-	Other
+	Unspecified
 }
 
 impl Display for BitReaderError {
@@ -137,7 +165,6 @@ mod tests {
 	fn should_read_one_set_bit() {
 		use std::io::{ Cursor };
 
-		let expected = true;
 		let mut br = BitReader::new(Cursor::new(vec![3]));
 
 		match br.read_bit() {
@@ -145,4 +172,48 @@ mod tests {
 			_ => panic!("Should have read one set bit"),
 		}
 	}
-}
+
+	#[test]
+	fn should_read_two_bits() {
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![2]));
+
+		match (br.read_bit(), br.read_bit()) {
+			(Ok(my_bit_0), Ok(my_bit_1)) => {
+				assert!(!my_bit_0);
+				assert!(my_bit_1);
+			},
+			_ => panic!("Should have read one unset bit and one set bit"),
+		}
+	}
+
+	#[test]
+	fn should_read_u8_after_bit() {
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b10001101, 0b00010101]));
+
+		match (br.read_bit(), br.read_u8()) {
+			(Ok(my_bit), Ok(my_u8)) => {
+				assert!(my_bit);
+				assert_eq!(0b11000110, my_u8);
+			},
+			_ => panic!("Should have read one set bit and one u8"),
+		}
+	}
+
+	#[test]
+	fn should_read_u16_after_bit() {
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b10001101, 0b00010101, 0b00010101]));
+
+		match (br.read_bit(), br.read_u16()) {
+			(Ok(my_bit), Ok(my_u16)) => {
+				assert!(my_bit);
+				assert_eq!(0b1000101011000110, my_u16);
+			},
+			_ => panic!("Should have read one set bit and one u16"),
+		}
+	}}
