@@ -106,7 +106,16 @@ impl<R: Read> BitReader<R> {
 	}
 
 	pub fn read_n_bits(&mut self, n: usize) -> Result<Vec<bool>, BitReaderError> {
-		unimplemented!()
+		let mut v = Vec::with_capacity(n);
+
+		for _ in 0..n {
+			match self.read_bit() {
+				Ok(bit) => v.push(bit),
+				Err(_) => return Err(BitReaderError::Unspecified),
+			}
+		}
+
+		Ok(v)
 	}
 
 	pub fn read_zero_terminated_string(&mut self) -> Result<Vec<u8>, BitReaderError> {
@@ -333,7 +342,7 @@ mod tests {
 		let mut br = BitReader::new(Cursor::new(vec![0x08]));
 
 		match br.read_n_bits(8) {
-			Ok(bits) => assert_eq!(vec![false, false, false, false, true, false, false, false], bits),
+			Ok(bits) => assert_eq!(vec![false, false, false, true, false, false, false, false], bits),
 			_ => panic!("Should have read 8 bits"),
 		}
 	}
