@@ -103,7 +103,20 @@ impl<R: Read> BitReader<R> {
 				}
 			}
 		}
+	}
 
+	pub fn read_zero_terminated_string(&mut self) -> Result<Vec<u8>, BitReaderError> {
+		let mut my_string = Vec::with_capacity(16);
+
+		loop {
+			match self.read_u8() {
+				Ok(0) => break,
+				Ok(byte) => my_string.push(byte),
+				Err(_) => return Err(BitReaderError::Unspecified),
+			}
+		}
+
+		Ok(my_string)
 	}
 }
 
@@ -252,6 +265,26 @@ mod tests {
 				assert_eq!(0x5604308e, my_u32);
 			},
 			_ => panic!("Should have read one u32"),
+		}
+	}
+
+	#[test]
+	fn should_read_zero_terminated_string() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![
+			0x78, 0x78, 0x78, 0x78, 0x78,
+			0x79, 0x79, 0x79, 0x79, 0x79,
+			0x2e, 0x74, 0x78, 0x74, 0x00,
+			0x78, 0x78, 0x78, 0x78, 0x78,
+			0x79, 0x79, 0x79, 0x79, 0x79,
+			0x2e, 0x74, 0x78, 0x74, 0x00,
+		]));
+
+		match br.read_zero_terminated_string() {
+			Ok(my_vec) => assert_eq!("xxxxxyyyyy.txt", &(String::from_utf8(my_vec).unwrap())),
+			_ => panic!("Should have read zero-terminated string"),
 		}
 	}
 }
