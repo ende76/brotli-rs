@@ -118,6 +118,19 @@ impl<R: Read> BitReader<R> {
 
 		Ok(my_string)
 	}
+
+	pub fn read_fixed_length_string(&mut self, len: usize) -> Result<Vec<u8>, BitReaderError> {
+		let mut my_string = Vec::with_capacity(16);
+
+		for _ in 0..len {
+			match self.read_u8() {
+				Ok(byte) => my_string.push(byte),
+				Err(_) => return Err(BitReaderError::Unspecified),
+			}
+		}
+
+		Ok(my_string)
+	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -285,6 +298,26 @@ mod tests {
 		match br.read_zero_terminated_string() {
 			Ok(my_vec) => assert_eq!("xxxxxyyyyy.txt", &(String::from_utf8(my_vec).unwrap())),
 			_ => panic!("Should have read zero-terminated string"),
+		}
+	}
+
+	#[test]
+	fn should_read_fixed_length_string() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![
+			0x78, 0x78, 0x78, 0x78, 0x78,
+			0x79, 0x79, 0x79, 0x79, 0x79,
+			0x2e, 0x74, 0x78, 0x74, 0x00,
+			0x78, 0x78, 0x78, 0x78, 0x78,
+			0x79, 0x79, 0x79, 0x79, 0x79,
+			0x2e, 0x74, 0x78, 0x74, 0x00,
+		]));
+
+		match br.read_fixed_length_string(14) {
+			Ok(my_vec) => assert_eq!("xxxxxyyyyy.txt", &(String::from_utf8(my_vec).unwrap())),
+			_ => panic!("Should have read fixed-length string"),
 		}
 	}
 }
