@@ -13,17 +13,6 @@ const U8_IDENTIFICATION1_GZIP: u8 = 0x1f;
 const U8_IDENTIFICATION2_GZIP: u8 = 0x8b;
 const U8_COMPRESSION_METHOD_DEFLATE: u8 = 0x08;
 
-const FLAGS_MASK: u8           = 0b11100000;
-const FLAG_FTEXT: u8          =  1;
-const FLAG_FHCRC: u8          =  2;
-const FLAG_FEXTRA: u8         =  4;
-const FLAG_FNAME: u8          =  8;
-const FLAG_FCOMMENT: u8       = 16;
-
-const EXTRA_FLAGS_MASK: u8     = 0b11111001;
-const EXTRA_FLAG_MAXIMUM_COMPRESSION: u8 = 2;
-const EXTRA_FLAG_FASTEST_ALGORITHM: u8   = 4;
-
 /// Wraps an input stream and provides methods for decompressing.
 ///
 /// # Examples
@@ -42,11 +31,10 @@ pub struct Decompressor<R: Read> {
 
 	buf: Vec<u8>,
 
-	bfinal: Option<BFinal>,
-	btype: Option<BType>,
 	state: State,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 struct Header {
 	id1: Option<Identification>,
 	id2: Option<Identification>,
@@ -101,15 +89,7 @@ struct Flags{
 }
 
 type MTime = u32;
-
-#[derive(Debug, Clone, PartialEq)]
-struct ExtraField {
-	si1: u8,
-	si2: u8,
-	len: u16,
-	data: Vec<u8>,
-}
-
+type ExtraField = Vec<u8>;
 
 #[derive(Debug, Clone, PartialEq)]
 struct ExtraFlags {
@@ -154,8 +134,7 @@ type Symbol = u16;
 
 #[derive(Debug, Clone, PartialEq)]
 enum State {
-	Error(DecompressorError, Box<State>),
-	Initialized,
+	HeaderBegin,
 	Identification1(Identification),
 	Identification2(Identification),
 	CompressionMethod(CompressionMethod),
@@ -163,13 +142,16 @@ enum State {
 	MTime(MTime),
 	ExtraFlags(ExtraFlags),
 	OS(OS),
+	ParsingXLen(bool),
 	XLen(XLen),
 	ExtraField(ExtraField),
+	ParsingFileName(bool),
 	FileName(FileName),
+	ParsingFileComment(bool),
 	FileComment(FileComment),
+	ParsingCRC16(bool),
 	CRC16(CRC16),
-	BFinal(BFinal),
-	BType(BType),
+	HeaderEnd,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -177,10 +159,9 @@ enum DecompressorError {
 	UnexpectedEOF,
 	NonZeroReservedFlag,
 	NonZeroReservedExtraFlag,
-	ReservedBType,
-	UnknownCompressionMethod,
-	UnknownIdentification,
-	UnknownOS,
+	InvalidCompressionMethod,
+	InvalidIdentification,
+	InvalidOS,
 }
 
 impl Display for DecompressorError {
@@ -195,10 +176,9 @@ impl Error for DecompressorError {
 			&DecompressorError::UnexpectedEOF => "Encountered unexpected EOF",
 			&DecompressorError::NonZeroReservedFlag => "Non-zero reserved flag in gzip header",
 			&DecompressorError::NonZeroReservedExtraFlag => "Non-zero reserved extra-flag in gzip header",
-			&DecompressorError::ReservedBType => "Reserved BType in deflate block header",
-			&DecompressorError::UnknownCompressionMethod => "Unknown compression method in gzip header",
-			&DecompressorError::UnknownIdentification => "Unknown identification in gzip header (not a gzip file)",
-			&DecompressorError::UnknownOS => "Unknown OS identification in gzip header",
+			&DecompressorError::InvalidCompressionMethod => "Invalid compression method in gzip header",
+			&DecompressorError::InvalidIdentification => "Invalid identification in gzip header (not a gzip file)",
+			&DecompressorError::InvalidOS => "Invalid OS identification in gzip header",
 		}
 	}
 }
@@ -212,16 +192,14 @@ impl<R: Read> Decompressor<R> {
 
 			buf: Vec::new(),
 
-			bfinal: None,
-			btype: None,
-			state: State::Initialized,
+			state: State::HeaderBegin,
 		}
 	}
 
 	fn parse_identification1(&mut self) -> result::Result<State, DecompressorError> {
 		match self.in_stream.read_u8() {
 			Ok(U8_IDENTIFICATION1_GZIP) => Ok(State::Identification1(Identification::Gzip)),
-			Ok(_) => Err(DecompressorError::UnknownIdentification),
+			Ok(_) => Err(DecompressorError::InvalidIdentification),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
@@ -229,7 +207,7 @@ impl<R: Read> Decompressor<R> {
 	fn parse_identification2(&mut self) -> result::Result<State, DecompressorError> {
 		match self.in_stream.read_u8() {
 			Ok(U8_IDENTIFICATION2_GZIP) => Ok(State::Identification2(Identification::Gzip)),
-			Ok(_) => Err(DecompressorError::UnknownIdentification),
+			Ok(_) => Err(DecompressorError::InvalidIdentification),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
@@ -237,180 +215,112 @@ impl<R: Read> Decompressor<R> {
 	fn parse_compression_method(&mut self) -> result::Result<State, DecompressorError> {
 		match self.in_stream.read_u8() {
 			Ok(U8_COMPRESSION_METHOD_DEFLATE) => Ok(State::CompressionMethod(CompressionMethod::Deflate)),
-			Ok(_) => Err(DecompressorError::UnknownCompressionMethod),
+			Ok(_) => Err(DecompressorError::InvalidCompressionMethod),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
 	fn parse_flags(&mut self) -> result::Result<State, DecompressorError> {
-		// if buf.len() < 1 {
+		match self.in_stream.read_n_bits(8) {
+			Ok(flags) => {
+				if flags[5] || flags[6] || flags[7] {
 
-		// 	Err(DecompressorError::NeedMoreBytes)
-		// } else {
-		// 	let b = buf.pop_front().unwrap();
-
-		// 	match b {
-		// 		flags => {
-		// 			if flags & FLAGS_MASK > 0 {
-
-		// 				Err(DecompressorError::NonZeroReservedFlag)
-		// 			} else {
-		// 				Ok(DecompressorSuccess::Flags(Flags{
-		// 					ftext:    flags & FLAG_FTEXT > 0,
-		// 					fhcrc:    flags & FLAG_FHCRC > 0,
-		// 					fextra:   flags & FLAG_FEXTRA > 0,
-		// 					fname:    flags & FLAG_FNAME > 0,
-		// 					fcomment: flags & FLAG_FCOMMENT > 0,
-		// 				}))
-		// 			}
-		// 		}
-		// 	}
-		// }
-		unimplemented!()
+					Err(DecompressorError::NonZeroReservedFlag)
+				} else {
+					Ok(State::Flags(Flags{
+						ftext:    flags[0],
+						fhcrc:    flags[1],
+						fextra:   flags[2],
+						fname:    flags[3],
+						fcomment: flags[4],
+					}))
+				}
+			},
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
 	}
 
-	// fn parse_mtime(ref mut buf: &mut VecDeque<u8>) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < 4 {
+	fn parse_mtime(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_u32() {
+			Ok(mtime) => Ok(State::MTime(mtime)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
 
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let b0  = buf.pop_front().unwrap();
-	// 		let b8  = buf.pop_front().unwrap();
-	// 		let b16 = buf.pop_front().unwrap();
-	// 		let b24 = buf.pop_front().unwrap();
+	fn parse_xfl(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_n_bits(8) {
+			Ok(flags) => {
+				if flags[0] || flags[3] || flags[4] || flags[5] || flags[6] || flags[7] {
 
-	// 		Ok(DecompressorSuccess::MTime(b0 as MTime | ((b8 as MTime) << 8) | ((b16 as MTime) << 16) | ((b24 as MTime) << 24)))
-	// 	}
-	// }
+					Err(DecompressorError::NonZeroReservedExtraFlag)
+				} else {
+					Ok(State::ExtraFlags(ExtraFlags{
+						maximum_compression: flags[1],
+						fastest_algorithm:   flags[2],
+					}))
+				}
+			},
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
 
-	// fn parse_extra_flags(ref mut buf: &mut VecDeque<u8>) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < 1 {
+	fn parse_os(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_u8() {
+			Ok(0) => Ok(State::OS(OS::FATFilesystem)),
+			Ok(1) => Ok(State::OS(OS::Amiga)),
+			Ok(2) => Ok(State::OS(OS::VMS)),
+			Ok(3) => Ok(State::OS(OS::Unix)),
+			Ok(4) => Ok(State::OS(OS::VMCMS)),
+			Ok(5) => Ok(State::OS(OS::AtariTOS)),
+			Ok(6) => Ok(State::OS(OS::HPFSFilesystem)),
+			Ok(7) => Ok(State::OS(OS::Macintosh)),
+			Ok(8) => Ok(State::OS(OS::ZSystem)),
+			Ok(9) => Ok(State::OS(OS::CPM)),
+			Ok(10) => Ok(State::OS(OS::TOPS20)),
+			Ok(11) => Ok(State::OS(OS::NTFSFilesystem)),
+			Ok(12) => Ok(State::OS(OS::QDOS)),
+			Ok(13) => Ok(State::OS(OS::AcornRISCOS)),
+			Ok(255) => Ok(State::OS(OS::Unknown)),
+			Ok(_) => Err(DecompressorError::InvalidOS),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
 
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let b = buf.pop_front().unwrap();
+	fn parse_xlen(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_u16() {
+			Ok(xlen) => Ok(State::XLen(xlen)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
 
-	// 		match b {
-	// 			flags => {
-	// 				if flags & EXTRA_FLAGS_MASK > 0 {
+	fn parse_extra_field(&mut self, xlen: XLen) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_fixed_length_string(xlen as usize) {
+			Ok(extra_field) => Ok(State::ExtraField(extra_field)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
 
-	// 					Err(DecompressorError::NonZeroReservedExtraFlag)
-	// 				} else {
-	// 					Ok(DecompressorSuccess::ExtraFlags(ExtraFlags{
-	// 						maximum_compression: flags & EXTRA_FLAG_MAXIMUM_COMPRESSION > 0,
-	// 						fastest_algorithm: flags & EXTRA_FLAG_FASTEST_ALGORITHM > 0,
-	// 					}))
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// }
+	fn parse_file_name(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_zero_terminated_string() {
+			Ok(file_name) => Ok(State::FileName(String::from_utf8(file_name).unwrap())),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
 
-	// fn parse_os(ref mut buf: &mut VecDeque<u8>) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < 1 {
+	fn parse_file_comment(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_zero_terminated_string() {
+			Ok(file_comment) => Ok(State::FileComment(String::from_utf8(file_comment).unwrap())),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
 
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let b = buf.pop_front().unwrap();
+	fn parse_crc16(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_u16() {
+			Ok(crc16) => Ok(State::CRC16(crc16)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
 
-	// 		match b {
-	// 			0 => Ok(DecompressorSuccess::OS(OS::FATFilesystem)),
-	// 			1 => Ok(DecompressorSuccess::OS(OS::Amiga)),
-	// 			2 => Ok(DecompressorSuccess::OS(OS::VMS)),
-	// 			3 => Ok(DecompressorSuccess::OS(OS::Unix)),
-	// 			4 => Ok(DecompressorSuccess::OS(OS::VMCMS)),
-	// 			5 => Ok(DecompressorSuccess::OS(OS::AtariTOS)),
-	// 			6 => Ok(DecompressorSuccess::OS(OS::HPFSFilesystem)),
-	// 			7 => Ok(DecompressorSuccess::OS(OS::Macintosh)),
-	// 			8 => Ok(DecompressorSuccess::OS(OS::ZSystem)),
-	// 			9 => Ok(DecompressorSuccess::OS(OS::CPM)),
-	// 			10 => Ok(DecompressorSuccess::OS(OS::TOPS20)),
-	// 			11 => Ok(DecompressorSuccess::OS(OS::NTFSFilesystem)),
-	// 			12 => Ok(DecompressorSuccess::OS(OS::QDOS)),
-	// 			13 => Ok(DecompressorSuccess::OS(OS::AcornRISCOS)),
-	// 			255 => Ok(DecompressorSuccess::OS(OS::Unknown)),
-	// 			_ => Err(DecompressorError::UnknownOS),
-	// 		}
-	// 	}
-	// }
-
-	// fn parse_xlen(ref mut buf: &mut VecDeque<u8>) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < 2 {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let b0 = buf.pop_front().unwrap();
-	// 		let b8 = buf.pop_front().unwrap();
-
-	// 		Ok(DecompressorSuccess::XLen(((b8 as XLen) << 8) | b0 as XLen))
-	// 	}
-	// }
-
-	// fn parse_extra_field(ref mut buf: &mut VecDeque<u8>, xlen: XLen) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < xlen as usize {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-
-	// 		Ok(DecompressorSuccess::ExtraField)
-	// 	}
-	// }
-
-	// fn parse_file_name(ref mut buf: &mut VecDeque<u8>) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if !buf.iter().any(|&b| b == 0) {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let mut file_name: Vec<u8> = Vec::new();
-	// 		let mut b;
-
-	// 		loop {
-	// 			b = buf.pop_front().unwrap();
-
-	// 			if b == 0 {
-	// 				break;
-	// 			}
-
-	// 			file_name.push(b);
-	// 		}
-
-	// 		Ok(DecompressorSuccess::FileName(String::from_utf8(file_name).unwrap()))
-	// 	}
-	// }
-
-	// fn parse_file_comment(ref mut buf: &mut VecDeque<u8>) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if !buf.iter().any(|&b| b == 0) {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let mut file_comment: Vec<u8> = Vec::new();
-	// 		let mut b;
-
-	// 		loop {
-	// 			b = buf.pop_front().unwrap();
-
-	// 			if b == 0 {
-	// 				break;
-	// 			}
-
-	// 			file_comment.push(b);
-	// 		}
-
-	// 		Ok(DecompressorSuccess::FileComment(String::from_utf8(file_comment).unwrap()))
-	// 	}
-	// }
-
-	// fn parse_crc16(ref mut buf: &mut VecDeque<u8>) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < 2 {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let b0 = buf.pop_front().unwrap();
-	// 		let b8 = buf.pop_front().unwrap();
-
-	// 		Ok(DecompressorSuccess::CRC16(((b8 as CRC16) << 8) | b0 as CRC16))
-	// 	}
-	// }
 
 	// fn parse_bfinal(ref mut buf: &mut VecDeque<u8>, mut next_bit: &mut u8) -> result::Result<DecompressorSuccess, DecompressorError> {
 	// 	if buf.len() < 1 {
@@ -485,7 +395,7 @@ impl<R: Read> Decompressor<R> {
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
 		loop {
 			match self.state.clone() {
-				State::Initialized => {
+				State::HeaderBegin => {
 					self.state = match self.parse_identification1() {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -509,133 +419,104 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::CompressionMethod(cm) => {
 					assert_eq!(CompressionMethod::Deflate, cm);
-					self.state = State::Flags(Flags{
-						ftext: false,
-						fhcrc: false,
-						fextra: false,
-						fname: false,
-						fcomment: false,
-					});
+					self.header.cm = Some(cm);
+					self.state = match self.parse_flags() {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
 				},
-				// State::ParsingFlags => {
-				// 	match Self::parse_flags(&mut self.in_buf) {
-				// 		Ok(DecompressorSuccess::Flags(flags)) => self.state = State::Flags(flags),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		Err(DecompressorError::NonZeroReservedFlag) => panic!("DecompressorError::NonZeroReservedFlag"),
-				// 		_ => unreachable!(),
-				// 	}
-				// }
-				// State::Flags(flags) => {
-				// 	self.flags = Some(flags);
-				// 	self.state = State::ParsingMTime;
-				// },
-				// State::ParsingMTime => {
-				// 	match Self::parse_mtime(&mut self.in_buf) {
-				// 		Ok(DecompressorSuccess::MTime(mtime)) => self.state = State::MTime(mtime),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::MTime(mtime) => {
-				// 	self.mtime = Some(mtime);
-				// 	self.state = State::ParsingExtraFlags;
-				// },
-				// State::ParsingExtraFlags => {
-				// 	match Self::parse_extra_flags(&mut self.in_buf) {
-				// 		Ok(DecompressorSuccess::ExtraFlags(extra_flags)) => self.state = State::ExtraFlags(extra_flags),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		Err(DecompressorError::NonZeroReservedExtraFlag) => panic!("DecompressorError::NonZeroReservedExtraFlag"),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::ExtraFlags(extra_flags) => {
-				// 	self.extra_flags = Some(extra_flags);
-				// 	self.state = State::ParsingOS;
-				// },
-				// State::ParsingOS => {
-				// 	match Self::parse_os(&mut self.in_buf) {
-				// 		Ok(DecompressorSuccess::OS(os)) => self.state = State::OS(os),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		Err(DecompressorError::UnknownOS) => panic!("DecompressorError::UnknownOS"),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::OS(os) => {
-				// 	self.os = Some(os);
-				// 	self.state = State::ParsingXLen(self.flags.as_ref().unwrap().fextra);
-				// },
-				// State::ParsingXLen(true) => {
-				// 	match Self::parse_xlen(&mut self.in_buf) {
-				// 		Ok(DecompressorSuccess::XLen(xlen)) => self.state = State::XLen(xlen),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::ParsingXLen(false) => {
+				State::Flags(flags) => {
+					self.header.flags = Some(flags);
+					self.state = match self.parse_mtime() {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+				},
+				State::MTime(mtime) => {
+					self.header.mtime = Some(mtime);
+					self.state = match self.parse_xfl() {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+				},
+				State::ExtraFlags(xfl) => {
+					self.header.xfl = Some(xfl);
+					self.state = match self.parse_os() {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+				},
+				State::OS(os) => {
+					self.header.os = Some(os);
+					self.state = State::ParsingXLen(self.header.flags.as_ref().unwrap().fextra);
+				},
+				State::ParsingXLen(true) => {
+					self.state = match self.parse_xlen() {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+				},
+				State::ParsingXLen(false) => {
 
-				// 	self.state = State::ParsingFileName(self.flags.as_ref().unwrap().fname);
-				// },
-				// State::XLen(xlen) => {
-				// 	self.xlen = Some(xlen);
-				// 	self.state = State::ParsingExtraField;
-				// },
-				// State::ParsingExtraField => {
-				// 	// We say we're parsing, but really we're just discarding self.xlen # of bytes from in_stream
-				// 	match Self::parse_extra_field(&mut self.in_buf, self.xlen.unwrap()) {
-				// 		Ok(DecompressorSuccess::ExtraField) => self.state = State::ExtraField,
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		_ => unreachable!(),
-				// 	}
-				// }
-				// State::ExtraField => {
+					self.state = State::ParsingFileName(self.header.flags.as_ref().unwrap().fname);
+				},
+				State::XLen(xlen) => {
+					self.header.xlen = Some(xlen);
+					self.state = match self.parse_extra_field(xlen) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+				},
+				State::ExtraField(extra_field) => {
+					self.header.extra_field = Some(extra_field);
+					self.state = State::ParsingFileName(self.header.flags.as_ref().unwrap().fname);
+				},
+				State::ParsingFileName(true) => {
+					self.state = match self.parse_file_name() {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+				},
+				State::ParsingFileName(false) => {
 
-				// 	self.state = State::ParsingFileName(self.flags.as_ref().unwrap().fname);
-				// },
-				// State::ParsingFileName(true) => {
-				// 	match Self::parse_file_name(&mut self.in_buf) {
-				// 		Ok(DecompressorSuccess::FileName(file_name)) => self.state = State::FileName(file_name),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::ParsingFileName(false) => {
+					self.state = State::ParsingFileComment(self.header.flags.as_ref().unwrap().fcomment);
+				},
+				State::FileName(file_name) => {
+					self.header.file_name = Some(file_name);
+					self.state = State::ParsingFileComment(self.header.flags.as_ref().unwrap().fcomment);
+				},
+				State::ParsingFileComment(true) => {
+					self.state = match self.parse_file_comment() {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+				},
+				State::ParsingFileComment(false) => {
 
-				// 	self.state = State::ParsingFileComment(self.flags.as_ref().unwrap().fcomment);
-				// },
-				// State::FileName(file_name) => {
-				// 	self.file_name = Some(file_name);
-				// 	self.state = State::ParsingFileComment(self.flags.as_ref().unwrap().fcomment);
-				// },
-				// State::ParsingFileComment(true) => {
-				// 	match Self::parse_file_comment(&mut self.in_buf) {
-				// 		Ok(DecompressorSuccess::FileComment(file_comment)) => self.state = State::FileComment(file_comment),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::ParsingFileComment(false) => {
+					self.state = State::ParsingCRC16(self.header.flags.as_ref().unwrap().fhcrc);
+				},
+				State::FileComment(file_comment) => {
+					self.header.file_comment = Some(file_comment);
+					self.state = State::ParsingCRC16(self.header.flags.as_ref().unwrap().fhcrc);
+				},
+				State::ParsingCRC16(false) => {
 
-				// 	self.state = State::ParsingCRC16(self.flags.as_ref().unwrap().fhcrc);
-				// },
-				// State::FileComment(file_comment) => {
-				// 	self.file_comment = Some(file_comment);
-				// 	self.state = State::ParsingCRC16(self.flags.as_ref().unwrap().fhcrc);
-				// },
-				// State::ParsingCRC16(false) => {
-
-				// 	self.state = State::ParsingBFinal;
-				// },
-				// State::ParsingCRC16(true) => {
-				// 	match Self::parse_crc16(&mut self.in_buf) {
-				// 		Ok(DecompressorSuccess::CRC16(crc16)) => self.state = State::CRC16(crc16),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::CRC16(crc16) => {
-				// 	self.crc16 = Some(crc16);
-				// 	self.state = State::ParsingBFinal;
-				// },
+					self.state = State::HeaderEnd;
+				},
+				State::ParsingCRC16(true) => {
+					self.state = match self.parse_crc16() {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+				},
+				State::CRC16(crc16) => {
+					self.header.crc16 = Some(crc16);
+					self.state = State::HeaderEnd;
+				},
+				State::HeaderEnd => {
+					println!("{:?}", self.header);
+					unimplemented!();
+				},
 				// State::ParsingBFinal => {
 				// 	match Self::parse_bfinal(&mut self.in_buf, &mut self.next_bit) {
 				// 		Ok(DecompressorSuccess::BFinal(bfinal)) => self.state = State::BFinal(bfinal),
@@ -688,10 +569,6 @@ impl<R: Read> Decompressor<R> {
 				// State::Symbol(symbol) => {
 				// 	unimplemented!();
 				// },
-				state => {
-					assert_eq!(State::Initialized, state);
-					panic!(state);
-				}
 			};
 		}
 	}
