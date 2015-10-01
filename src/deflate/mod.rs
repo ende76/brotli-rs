@@ -52,6 +52,7 @@ enum State {
 	HeaderBegin,
 	BFinal(BFinal),
 	BType(BType),
+	HandlingHuffmanCodes(BType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -119,10 +120,18 @@ impl Decompressor {
 					}
 				},
 				State::BType(btype) => {
-					self.header.btype = Some(btype);
-
-					println!("{:?}", self.header);
-					self.state = unimplemented!()
+					self.header.btype = Some(btype.clone());
+					self.state = State::HandlingHuffmanCodes(btype);
+				},
+				State::HandlingHuffmanCodes(BType::NoCompression) => {
+					unimplemented!();
+				},
+				State::HandlingHuffmanCodes(BType::CompressedWithFixedHuffmanCodes) => {
+					// @TODO: do this first!
+					unimplemented!();
+				},
+				State::HandlingHuffmanCodes(BType::CompressedWithDynamicHuffmanCodes) => {
+					unimplemented!();
 				}
 			}
 		}
@@ -131,53 +140,6 @@ impl Decompressor {
 
 
 
-	// fn parse_bfinal(ref mut buf: &mut VecDeque<u8>, mut next_bit: &mut u8) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < 1 {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let b = if *next_bit == 7 {
-	// 			buf.pop_front().unwrap()
-	// 		} else {
-	// 			buf[0]
-	// 		};
-	// 		let bit_mask = 1u8 << *next_bit;
-
-	// 		*next_bit = (*next_bit + 1) % 8;
-
-	// 		Ok(DecompressorSuccess::BFinal(b & bit_mask > 0))
-	// 	}
-	// }
-
-	// fn parse_btype(ref mut buf: &mut VecDeque<u8>, mut next_bit: &mut u8) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < 1 || (buf.len() < 2 && *next_bit == 7) {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let b0 = if *next_bit == 7 {
-	// 			buf.pop_front().unwrap()
-	// 		} else {
-	// 			buf[0]
-	// 		};
-	// 		let bit_mask0 = 1u8 << *next_bit;
-	// 		*next_bit += 1;
-
-	// 		let b1 = if *next_bit == 7 {
-	// 			buf.pop_front().unwrap()
-	// 		} else {
-	// 			buf[0]
-	// 		};
-	// 		let bit_mask1 = 1u8 << *next_bit;
-	// 		*next_bit += 1;
-
-	// 		match (b1 & bit_mask1, b0 & bit_mask0) {
-	// 			(0, 0) => Ok(DecompressorSuccess::BType(BType::NoCompression)),
-	// 			(0, _) => Ok(DecompressorSuccess::BType(BType::CompressedWithFixedHuffmanCodes)),
-	// 			(_, 0) => Ok(DecompressorSuccess::BType(BType::CompressedWithDynamicHuffmanCodes)),
-	// 			(_, _) => Err(DecompressorError::ReservedBType),
-	// 		}
-	// 	}
-	// }
 
 	// fn create_fixed_huffman_codes() -> HuffmanCodes {
 	// 	let lengths = [vec!(8; 144), vec!(9; 112), vec!(7; 24), vec!(8; 8)].concat();
