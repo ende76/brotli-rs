@@ -1,4 +1,5 @@
 use ::bitreader::BitReader;
+use ::deflate;
 
 use std::error::Error;
 use std::fmt;
@@ -32,6 +33,11 @@ pub struct Decompressor<R: Read> {
 	buf: Vec<u8>,
 
 	state: State,
+
+	// note: this could probably be a more generic Decompressor trait
+	//       does not have much impact in this concrete case, because
+	//       gzip only seems to use deflate for the actual compression
+	sub_decompressor: Option<deflate::Decompressor>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,14 +126,6 @@ type XLen = u16;
 type FileName = String;
 type FileComment = String;
 type CRC16 = u16;
-type BFinal = bool;
-
-#[derive(Debug, Clone, PartialEq)]
-enum BType {
-	NoCompression,
-	CompressedWithFixedHuffmanCodes,
-	CompressedWithDynamicHuffmanCodes,
-}
 
 type Symbol = u16;
 // type HuffmanCodes = huffman::tree::Tree;
@@ -184,15 +182,17 @@ impl Error for DecompressorError {
 }
 
 impl<R: Read> Decompressor<R> {
-	pub fn new(in_stream: R) -> Decompressor<R> {
+	pub fn new(in_stream: BitReader<R>) -> Decompressor<R> {
 		Decompressor{
-			in_stream: BitReader::new(in_stream),
+			in_stream: in_stream,
 
 			header: Header::new(),
 
 			buf: Vec::new(),
 
 			state: State::HeaderBegin,
+
+			sub_decompressor: None,
 		}
 	}
 
@@ -321,77 +321,6 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-
-	// fn parse_bfinal(ref mut buf: &mut VecDeque<u8>, mut next_bit: &mut u8) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < 1 {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let b = if *next_bit == 7 {
-	// 			buf.pop_front().unwrap()
-	// 		} else {
-	// 			buf[0]
-	// 		};
-	// 		let bit_mask = 1u8 << *next_bit;
-
-	// 		*next_bit = (*next_bit + 1) % 8;
-
-	// 		Ok(DecompressorSuccess::BFinal(b & bit_mask > 0))
-	// 	}
-	// }
-
-	// fn parse_btype(ref mut buf: &mut VecDeque<u8>, mut next_bit: &mut u8) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if buf.len() < 1 || (buf.len() < 2 && *next_bit == 7) {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		let b0 = if *next_bit == 7 {
-	// 			buf.pop_front().unwrap()
-	// 		} else {
-	// 			buf[0]
-	// 		};
-	// 		let bit_mask0 = 1u8 << *next_bit;
-	// 		*next_bit += 1;
-
-	// 		let b1 = if *next_bit == 7 {
-	// 			buf.pop_front().unwrap()
-	// 		} else {
-	// 			buf[0]
-	// 		};
-	// 		let bit_mask1 = 1u8 << *next_bit;
-	// 		*next_bit += 1;
-
-	// 		match (b1 & bit_mask1, b0 & bit_mask0) {
-	// 			(0, 0) => Ok(DecompressorSuccess::BType(BType::NoCompression)),
-	// 			(0, _) => Ok(DecompressorSuccess::BType(BType::CompressedWithFixedHuffmanCodes)),
-	// 			(_, 0) => Ok(DecompressorSuccess::BType(BType::CompressedWithDynamicHuffmanCodes)),
-	// 			(_, _) => Err(DecompressorError::ReservedBType),
-	// 		}
-	// 	}
-	// }
-
-	// fn create_fixed_huffman_codes() -> HuffmanCodes {
-	// 	let lengths = [vec!(8; 144), vec!(9; 112), vec!(7; 24), vec!(8; 8)].concat();
-
-	// 	huffman::codes_from_lengths(lengths)
-	// }
-
-	// fn parse_next_symbol(&mut self) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if self.in_buf.len() < 1 {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		if self.current_symbol == None {
-
-	// 			self.current_symbol = Some(self.huffman_codes.as_ref().unwrap() as *const HuffmanCodes);
-	// 		}
-
-	// 		loop {
-
-	// 		}
-	// 	}
-	// }
-
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
 		loop {
 			match self.state.clone() {
@@ -514,61 +443,15 @@ impl<R: Read> Decompressor<R> {
 					self.state = State::HeaderEnd;
 				},
 				State::HeaderEnd => {
-					println!("{:?}", self.header);
+					match (&self.sub_decompressor, &self.header.cm) {
+						(&None, &Some(CompressionMethod::Deflate)) => self.sub_decompressor = Some(deflate::Decompressor::new()),
+						(&Some(_), &Some(CompressionMethod::Deflate)) => {},
+						(_, &None) => unreachable!(),
+					};
+
+					self.sub_decompressor.as_mut().unwrap().decompress(&mut self.in_stream);
 					unimplemented!();
 				},
-				// State::ParsingBFinal => {
-				// 	match Self::parse_bfinal(&mut self.in_buf, &mut self.next_bit) {
-				// 		Ok(DecompressorSuccess::BFinal(bfinal)) => self.state = State::BFinal(bfinal),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::BFinal(bfinal) => {
-				// 	self.bfinal = Some(bfinal);
-				// 	self.state = State::ParsingBType;
-				// },
-				// State::ParsingBType => {
-				// 	match Self::parse_btype(&mut self.in_buf, &mut self.next_bit) {
-				// 		Ok(DecompressorSuccess::BType(btype)) => self.state = State::BType(btype),
-				// 		Err(DecompressorError::ReservedBType) => self.state = State::Error(DecompressorError::ReservedBType, Box::new(self.state.clone())),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::BType(btype) => {
-				// 	self.btype = Some(btype);
-
-				// 	match self.btype {
-				// 		Some(BType::NoCompression) => self.state = State::NoCompressionParsingLen,
-				// 		Some(BType::CompressedWithDynamicHuffmanCodes) => self.state = State::ParsingCodeTrees,
-				// 		Some(BType::CompressedWithFixedHuffmanCodes) => self.state = State::CreatingFixedHuffmanCodes,
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::NoCompressionParsingLen => {
-				// 	unimplemented!();
-				// },
-				// State::ParsingCodeTrees => {
-				// 	unimplemented!();
-				// },
-				// State::CreatingFixedHuffmanCodes => {
-				// 	self.state = State::HuffmanCodes(Self::create_fixed_huffman_codes());
-				// },
-				// State::HuffmanCodes(huffman_codes) => {
-				// 	self.huffman_codes = Some(huffman_codes);
-				// 	self.state = State::ParsingNextSymbol;
-				// },
-				// State::ParsingNextSymbol => {
-				// 	match self.parse_next_symbol() {
-				// 		Ok(DecompressorSuccess::Symbol(symbol)) => self.state = State::Symbol(symbol),
-				// 		Err(DecompressorError::NeedMoreBytes) => self.state = State::Error(DecompressorError::NeedMoreBytes, Box::new(self.state.clone())),
-				// 		_ => unreachable!(),
-				// 	}
-				// },
-				// State::Symbol(symbol) => {
-				// 	unimplemented!();
-				// },
 			};
 		}
 	}
