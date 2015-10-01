@@ -150,6 +150,7 @@ enum State {
 	ParsingCRC16(bool),
 	CRC16(CRC16),
 	HeaderEnd,
+	InSubDecompressor,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -448,10 +449,13 @@ impl<R: Read> Decompressor<R> {
 						(&Some(_), &Some(CompressionMethod::Deflate)) => {},
 						(_, &None) => unreachable!(),
 					};
-
-					self.sub_decompressor.as_mut().unwrap().decompress(&mut self.in_stream);
-					unimplemented!();
+					self.state = State::InSubDecompressor;
 				},
+				State::InSubDecompressor => {
+					match self.sub_decompressor.as_mut().unwrap().decompress(&mut self.in_stream) {
+						_ => unimplemented!()
+					}
+				}
 			};
 		}
 	}

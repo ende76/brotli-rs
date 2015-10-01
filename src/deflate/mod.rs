@@ -1,6 +1,11 @@
 use ::bitreader::BitReader;
 
+use std::error::Error;
+use std::fmt;
+use std::fmt::{ Display, Formatter };
+use std::io;
 use std::io::Read;
+use std::result;
 
 /// Wraps an input stream and provides methods for decompressing.
 ///
@@ -45,6 +50,29 @@ impl Header {
 #[derive(Debug, Clone, PartialEq)]
 enum State {
 	HeaderBegin,
+	BFinal(BFinal),
+	BType(BType),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DecompressorError {
+	UnexpectedEOF,
+	BlockTypeReserved
+}
+
+impl Display for DecompressorError {
+	fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+		fmt.write_str(self.description())
+	}
+}
+
+impl Error for DecompressorError {
+	fn description(&self) -> &str {
+		match self {
+			&DecompressorError::UnexpectedEOF => "Encountered unexpected EOF",
+			&DecompressorError::BlockTypeReserved => "Reserved block type in deflate header",
+		}
+	}
 }
 
 impl Decompressor {
@@ -55,8 +83,49 @@ impl Decompressor {
 		}
 	}
 
-	pub fn decompress<R: Read>(&mut self, ref mut in_stream: &mut BitReader<R>) {
-		unimplemented!()
+	fn parse_bfinal<R: Read>(ref mut in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+		match in_stream.read_bit() {
+			Ok(bfinal) => Ok(State::BFinal(bfinal)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_btype<R: Read>(ref mut in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+		match in_stream.read_n_bits(2) {
+			Ok(btype) => match (btype[1], btype[0]) {
+				(false, false) => Ok(State::BType(BType::NoCompression)),
+				(false, true) => Ok(State::BType(BType::CompressedWithFixedHuffmanCodes)),
+				(true, false) => Ok(State::BType(BType::CompressedWithDynamicHuffmanCodes)),
+				(true, true) => Err(DecompressorError::BlockTypeReserved),
+			},
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	pub fn decompress<R: Read>(&mut self, ref mut in_stream: &mut BitReader<R>) -> io::Result<Vec<u8>>{
+		loop {
+			match self.state.clone() {
+				State::HeaderBegin => {
+					self.state = match Self::parse_bfinal(*in_stream) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					}
+				},
+				State::BFinal(bfinal) => {
+					self.header.bfinal = Some(bfinal);
+					self.state = match Self::parse_btype(*in_stream) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					}
+				},
+				State::BType(btype) => {
+					self.header.btype = Some(btype);
+
+					println!("{:?}", self.header);
+					self.state = unimplemented!()
+				}
+			}
+		}
 	}
 }
 
