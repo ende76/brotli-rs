@@ -94,10 +94,10 @@ impl Tree {
 		}
 	}
 
-	pub fn lookup(&mut self, c: bool) -> Option<Tree> {
+	pub fn lookup(&self, c: bool) -> Option<Tree> {
 		match self {
-			&mut Tree::Leaf(_) => None,
-			&mut Tree::Inner(Node{
+			&Tree::Leaf(_) => None,
+			&Tree::Inner(Node{
 				ref left,
 				ref right
 			}) =>

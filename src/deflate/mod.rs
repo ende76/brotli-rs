@@ -1,5 +1,6 @@
 use ::bitreader::BitReader;
 use ::huffman;
+use ::huffman::tree::Tree;
 
 use std::error::Error;
 use std::fmt;
@@ -22,7 +23,7 @@ use std::result;
 pub struct Decompressor {
 	header: Header,
 	state: State,
-	huffman_codes: HuffmanCodes,
+	huffman_codes: Option<HuffmanCodes>,
 }
 
 type BFinal = bool;
@@ -35,6 +36,8 @@ enum BType {
 }
 
 type HuffmanCodes = huffman::tree::Tree;
+
+type Symbol = u16;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Header {
@@ -58,6 +61,7 @@ enum State {
 	BType(BType),
 	HandlingHuffmanCodes(BType),
 	HuffmanCodes(HuffmanCodes),
+	Symbol(Symbol)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -86,6 +90,7 @@ impl Decompressor {
 		Decompressor{
 			header: Header::new(),
 			state: State::HeaderBegin,
+			huffman_codes: None,
 		}
 	}
 
@@ -111,12 +116,23 @@ impl Decompressor {
 	fn create_fixed_huffman_codes() -> result::Result<State, DecompressorError> {
 		let lengths = [vec!(8; 144), vec!(9; 112), vec!(7; 24), vec!(8; 8)].concat();
 
-		State::HuffmanCodes(huffman::codes_from_lengths(lengths))
+		Ok(State::HuffmanCodes(huffman::codes_from_lengths(lengths)))
 	}
 
-	fn parse_next_symbol<R: Read>(ref mut in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+	fn parse_next_symbol<R: Read>(ref mut in_stream: &mut BitReader<R>, huffman_codes: &HuffmanCodes) -> result::Result<State, DecompressorError> {
+		let mut tree = huffman_codes.clone();
 
-		unimplemented!();
+		loop {
+			match in_stream.read_bit() {
+				Ok(bit) =>
+					match tree.lookup(bit) {
+						Some(Tree::Leaf(symbol)) => return Ok(State::Symbol(symbol)),
+						Some(inner) => tree = inner,
+						None => unreachable!(),
+					},
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			}
+		}
 	}
 
 	pub fn decompress<R: Read>(&mut self, ref mut in_stream: &mut BitReader<R>) -> io::Result<Vec<u8>>{
@@ -143,14 +159,20 @@ impl Decompressor {
 					unimplemented!();
 				},
 				State::HandlingHuffmanCodes(BType::CompressedWithFixedHuffmanCodes) => {
-					self.state = Self::create_fixed_huffman_codes();
+					self.state = match Self::create_fixed_huffman_codes() {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					}
 				},
 				State::HandlingHuffmanCodes(BType::CompressedWithDynamicHuffmanCodes) => {
 					unimplemented!();
 				},
-				State::HuffmanCodes(huffman_codes) {
+				State::HuffmanCodes(huffman_codes) => {
 					self.huffman_codes = Some(huffman_codes);
-					self.state = Self::parse_next_symbol();
+					self.state = match Self::parse_next_symbol(*in_stream, self.huffman_codes.as_ref().unwrap()) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					}
 				},
 				State::Symbol(byte @ 0...255) => {
 					// literal byte
@@ -167,6 +189,9 @@ impl Decompressor {
 					println!("length code {:?}", length_code);
 					unimplemented!()
 				},
+				State::Symbol(_) => {
+					unreachable!();
+				}
 			}
 		}
 	}
