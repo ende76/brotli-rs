@@ -1,4 +1,5 @@
 use ::bitreader::BitReader;
+use ::huffman;
 
 use std::error::Error;
 use std::fmt;
@@ -21,6 +22,7 @@ use std::result;
 pub struct Decompressor {
 	header: Header,
 	state: State,
+	huffman_codes: HuffmanCodes,
 }
 
 type BFinal = bool;
@@ -31,6 +33,8 @@ enum BType {
 	CompressedWithFixedHuffmanCodes,
 	CompressedWithDynamicHuffmanCodes,
 }
+
+type HuffmanCodes = huffman::tree::Tree;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Header {
@@ -53,6 +57,7 @@ enum State {
 	BFinal(BFinal),
 	BType(BType),
 	HandlingHuffmanCodes(BType),
+	HuffmanCodes(HuffmanCodes),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +108,17 @@ impl Decompressor {
 		}
 	}
 
+	fn create_fixed_huffman_codes() -> result::Result<State, DecompressorError> {
+		let lengths = [vec!(8; 144), vec!(9; 112), vec!(7; 24), vec!(8; 8)].concat();
+
+		State::HuffmanCodes(huffman::codes_from_lengths(lengths))
+	}
+
+	fn parse_next_symbol<R: Read>(ref mut in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+
+		unimplemented!();
+	}
+
 	pub fn decompress<R: Read>(&mut self, ref mut in_stream: &mut BitReader<R>) -> io::Result<Vec<u8>>{
 		loop {
 			match self.state.clone() {
@@ -127,38 +143,33 @@ impl Decompressor {
 					unimplemented!();
 				},
 				State::HandlingHuffmanCodes(BType::CompressedWithFixedHuffmanCodes) => {
-					// @TODO: do this first!
-					unimplemented!();
+					self.state = Self::create_fixed_huffman_codes();
 				},
 				State::HandlingHuffmanCodes(BType::CompressedWithDynamicHuffmanCodes) => {
 					unimplemented!();
-				}
+				},
+				State::HuffmanCodes(huffman_codes) {
+					self.huffman_codes = Some(huffman_codes);
+					self.state = Self::parse_next_symbol();
+				},
+				State::Symbol(byte @ 0...255) => {
+					// literal byte
+					println!("byte {:?}", byte);
+					unimplemented!()
+				},
+				State::Symbol(256) => {
+					// end of block
+					println!("end-of-block");
+					unimplemented!()
+				},
+				State::Symbol(length_code @ 257...285) => {
+					// length code
+					println!("length code {:?}", length_code);
+					unimplemented!()
+				},
 			}
 		}
 	}
 }
 
 
-
-
-	// fn create_fixed_huffman_codes() -> HuffmanCodes {
-	// 	let lengths = [vec!(8; 144), vec!(9; 112), vec!(7; 24), vec!(8; 8)].concat();
-
-	// 	huffman::codes_from_lengths(lengths)
-	// }
-
-	// fn parse_next_symbol(&mut self) -> result::Result<DecompressorSuccess, DecompressorError> {
-	// 	if self.in_buf.len() < 1 {
-
-	// 		Err(DecompressorError::NeedMoreBytes)
-	// 	} else {
-	// 		if self.current_symbol == None {
-
-	// 			self.current_symbol = Some(self.huffman_codes.as_ref().unwrap() as *const HuffmanCodes);
-	// 		}
-
-	// 		loop {
-
-	// 		}
-	// 	}
-	// }
