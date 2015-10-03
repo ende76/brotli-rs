@@ -274,6 +274,3 @@ mod tests {
 		assert_eq!(None, tree.lookup(false));
 	}
 }
-
-
-

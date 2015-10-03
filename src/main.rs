@@ -11,4 +11,6 @@ fn main() {
 	let _ = Decompressor::new(gzip_stream).read_to_string(&mut decompressed);
 
 	assert_eq!("xxxxxyyyyy", decompressed);
+
+	println!("{:?}", decompressed);
 }

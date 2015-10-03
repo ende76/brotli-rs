@@ -453,14 +453,14 @@ impl<R: Read> Decompressor<R> {
 					self.state = State::InSubDecompressor;
 				},
 				State::InSubDecompressor => {
-					match self.sub_decompressor.as_mut().unwrap().decompress(&mut self.in_stream) {
+					return match self.sub_decompressor.as_mut().unwrap().decompress(&mut self.in_stream) {
 						ref v => if v.len() > 0 {
 							for &b in v {
 								self.buf.push_front(b);
 							}
-							return Ok(v.len());
+							Ok(v.len())
 						} else {
-							unimplemented!();
+							Ok(0)
 						}
 					}
 				}

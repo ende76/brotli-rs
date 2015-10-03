@@ -24,7 +24,7 @@ pub struct Decompressor {
 	header: Header,
 	state: State,
 	huffman_codes: Option<HuffmanCodes>,
-	output_buf: VecDeque<u8>,
+	output_buf: Vec<u8>,
 }
 
 type BFinal = bool;
@@ -70,6 +70,8 @@ enum State {
 	Length(Length),
 	LengthDistanceCode(LengthDistanceCode),
 	LengthDistance(LengthDistance),
+	EndOfBlock,
+	Finished,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,7 +101,7 @@ impl Decompressor {
 			header: Header::new(),
 			state: State::HeaderBegin,
 			huffman_codes: None,
-			output_buf: VecDeque::with_capacity(32768),
+			output_buf: Vec::with_capacity(32768),
 		}
 	}
 
@@ -246,21 +248,23 @@ impl Decompressor {
 				State::Symbol(byte @ 0...255) => {
 					// literal byte
 					buf.push_front(byte as u8);
-					self.output_buf.push_front(byte as u8);
+					self.output_buf.push(byte as u8);
 
-					println!("{:?}", byte);
+					println!("Literal byte = {:?}", byte);
 
 					self.state = match Self::parse_next_symbol(*in_stream, self.huffman_codes.as_ref().unwrap()) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
 					};
 
+					println!("{:?}", buf);
+
 					return buf;
 				},
 				State::Symbol(256) => {
 					// end of block
-					println!("end-of-block");
-					unimplemented!()
+					println!("End-Of-Block");
+					self.state = State::EndOfBlock;
 				},
 				State::Symbol(length_code @ 257...285) => {
 					// length code
@@ -290,8 +294,37 @@ impl Decompressor {
 				},
 				State::LengthDistance((length, distance)) => {
 					println!("<Length, Distance> = {:?}", (length, distance));
-					unimplemented!();
+
+					let l = self.output_buf.len();
+					let from = l - distance as usize;
+					let to = from + length as usize;
+					let slice = &self.output_buf.clone()[from..if to > l { l } else { to }];
+					let sl = slice.len();
+
+					for i in 0..length as usize{
+						self.output_buf.push(slice[i % sl]);
+						buf.push_front(slice[i % sl]);
+					}
+
+					self.state = match Self::parse_next_symbol(*in_stream, self.huffman_codes.as_ref().unwrap()) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+
+					println!("{:?}", buf);
+
+					return buf;
 				},
+				State::EndOfBlock => {
+					self.state = if self.header.bfinal.unwrap() {
+						State::Finished
+					} else {
+						State::HeaderBegin
+					};
+				},
+				State::Finished => {
+					return buf;
+				}
 			}
 		}
 	}
