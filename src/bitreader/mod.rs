@@ -388,6 +388,19 @@ mod tests {
 	}
 
 	#[test]
+	fn should_read_11_bits() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b11001000, 0b11111110]));
+
+		match br.read_n_bits(11) {
+			Ok(bits) => assert_eq!(vec![false, false, false, true, false, false, true, true, false, true, true], bits),
+			_ => panic!("Should have read 11 bits"),
+		}
+	}
+
+	#[test]
 	fn should_read_13u8_from_5_bits() {
 		use super::*;
 		use std::io::{ Cursor };
@@ -406,10 +419,10 @@ mod tests {
 		use super::*;
 		use std::io::{ Cursor };
 
-		let mut br = BitReader::new(Cursor::new(vec![0b1111111011001000]));
+		let mut br = BitReader::new(Cursor::new(vec![0b11001000, 0b11111110]));
 
 		match br.read_u16_from_n_bits(11) {
-			Ok(my_u16) => assert_eq!(3784, my_u16),
+			Ok(my_u16) => assert_eq!(1736, my_u16),
 			_ => panic!("Should have read 3784u16"),
 		}
 	}
