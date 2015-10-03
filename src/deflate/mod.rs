@@ -2,10 +2,10 @@ use ::bitreader::BitReader;
 use ::huffman;
 use ::huffman::tree::Tree;
 
+use std::collections::VecDeque;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{ Display, Formatter };
-use std::io;
 use std::io::Read;
 use std::result;
 
@@ -24,6 +24,7 @@ pub struct Decompressor {
 	header: Header,
 	state: State,
 	huffman_codes: Option<HuffmanCodes>,
+	output_buf: VecDeque<u8>,
 }
 
 type BFinal = bool;
@@ -91,6 +92,7 @@ impl Decompressor {
 			header: Header::new(),
 			state: State::HeaderBegin,
 			huffman_codes: None,
+			output_buf: VecDeque::with_capacity(32768),
 		}
 	}
 
@@ -135,7 +137,9 @@ impl Decompressor {
 		}
 	}
 
-	pub fn decompress<R: Read>(&mut self, ref mut in_stream: &mut BitReader<R>) -> io::Result<Vec<u8>>{
+	pub fn decompress<R: Read>(&mut self, ref mut in_stream: &mut BitReader<R>) -> VecDeque<u8> {
+		let mut buf = VecDeque::new();
+
 		loop {
 			match self.state.clone() {
 				State::HeaderBegin => {
@@ -172,12 +176,21 @@ impl Decompressor {
 					self.state = match Self::parse_next_symbol(*in_stream, self.huffman_codes.as_ref().unwrap()) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
-					}
+					};
 				},
 				State::Symbol(byte @ 0...255) => {
 					// literal byte
-					println!("byte {:?}", byte);
-					unimplemented!()
+					buf.push_front(byte as u8);
+					self.output_buf.push_front(byte as u8);
+
+					self.state = match Self::parse_next_symbol(*in_stream, self.huffman_codes.as_ref().unwrap()) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+
+					println!("{:?}", byte);
+
+					return buf;
 				},
 				State::Symbol(256) => {
 					// end of block
@@ -196,5 +209,3 @@ impl Decompressor {
 		}
 	}
 }
-
-

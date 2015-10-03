@@ -1,6 +1,7 @@
 use ::bitreader::BitReader;
 use ::deflate;
 
+use std::collections::VecDeque;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{ Display, Formatter };
@@ -8,7 +9,7 @@ use std::io;
 use std::io::Read;
 use std::result;
 use std::string::String;
-use std::vec::Vec;
+
 
 const U8_IDENTIFICATION1_GZIP: u8 = 0x1f;
 const U8_IDENTIFICATION2_GZIP: u8 = 0x8b;
@@ -30,7 +31,7 @@ pub struct Decompressor<R: Read> {
 
 	header: Header,
 
-	buf: Vec<u8>,
+	buf: VecDeque<u8>,
 
 	state: State,
 
@@ -189,7 +190,7 @@ impl<R: Read> Decompressor<R> {
 
 			header: Header::new(),
 
-			buf: Vec::new(),
+			buf: VecDeque::new(),
 
 			state: State::HeaderBegin,
 
@@ -453,7 +454,14 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::InSubDecompressor => {
 					match self.sub_decompressor.as_mut().unwrap().decompress(&mut self.in_stream) {
-						_ => unimplemented!()
+						ref v => if v.len() > 0 {
+							for &b in v {
+								self.buf.push_front(b);
+							}
+							return Ok(v.len());
+						} else {
+							unimplemented!();
+						}
 					}
 				}
 			};
@@ -480,7 +488,7 @@ impl<R: Read> Read for Decompressor<R> {
 
 		for i in 0..l {
 
-			buf[i] = self.buf.pop().unwrap();
+			buf[i] = self.buf.pop_back().unwrap();
 		}
 
 		Ok(l)
