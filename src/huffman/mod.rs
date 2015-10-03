@@ -42,26 +42,3 @@ pub fn codes_from_lengths(ref lengths: Vec<usize>) -> tree::Tree {
 
 	codes
 }
-
-mod tests {
-
-	#[test]
-	fn should_encode_single_length() {
-		use super::codes_from_lengths;
-
-		let lengths = vec![1];
-		let codes = codes_from_lengths(lengths);
-
-		assert_eq!(vec![vec![false]], codes);
-	}
-
-	#[test]
-	fn should_encode_lengths() {
-		use super::codes_from_lengths;
-
-		let lengths = vec![3, 3, 3, 3, 3, 2, 4, 4];
-		let codes = codes_from_lengths(lengths);
-
-		assert_eq!(vec![vec![false, true, false], vec![false, true, true], vec![true, false, false], vec![true, false, true], vec![true, true, false], vec![false, false], vec![true, true, true, false], vec![true, true, true, true]], codes);
-	}
-}

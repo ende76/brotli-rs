@@ -118,6 +118,42 @@ impl<R: Read> BitReader<R> {
 		Ok(v)
 	}
 
+	pub fn read_u8_from_n_bits(&mut self, n: usize) -> Result<u8, BitReaderError> {
+		if n > 8 {
+			return Err(BitReaderError::TooManyBitsForU8);
+		}
+
+		let mut my_u8 = 0;
+
+		for i in 0..n {
+			match self.read_bit() {
+				Ok(true) => my_u8 = my_u8 | (1 << i),
+				Ok(false) => {},
+				Err(_) => return Err(BitReaderError::Unspecified),
+			}
+		}
+
+		Ok(my_u8)
+	}
+
+	pub fn read_u16_from_n_bits(&mut self, n: usize) -> Result<u16, BitReaderError> {
+		if n > 16 {
+			return Err(BitReaderError::TooManyBitsForU16);
+		}
+
+		let mut my_u16 = 0;
+
+		for i in 0..n {
+			match self.read_bit() {
+				Ok(true) => my_u16 = my_u16 | (1 << i),
+				Ok(false) => {},
+				Err(_) => return Err(BitReaderError::Unspecified),
+			}
+		}
+
+		Ok(my_u16)
+	}
+
 	pub fn read_zero_terminated_string(&mut self) -> Result<Vec<u8>, BitReaderError> {
 		let mut my_string = Vec::with_capacity(16);
 
@@ -148,7 +184,9 @@ impl<R: Read> BitReader<R> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BitReaderError {
-	Unspecified
+	Unspecified,
+	TooManyBitsForU8,
+	TooManyBitsForU16,
 }
 
 impl Display for BitReaderError {
@@ -160,6 +198,8 @@ impl Display for BitReaderError {
 impl Error for BitReaderError {
 	fn description(&self) -> &str {
 		match self {
+			&BitReaderError::TooManyBitsForU8 => "Tried reading u8 from more than 8 bits",
+			&BitReaderError::TooManyBitsForU16 => "Tried reading u16 from more than 16 bits",
 			_ => "Generic error",
 		}
 	}
@@ -344,6 +384,33 @@ mod tests {
 		match br.read_n_bits(8) {
 			Ok(bits) => assert_eq!(vec![false, false, false, true, false, false, false, false], bits),
 			_ => panic!("Should have read 8 bits"),
+		}
+	}
+
+	#[test]
+	fn should_read_13u8_from_5_bits() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![157]));
+
+		match br.read_u8_from_n_bits(5) {
+			Ok(my_u8) => assert_eq!(29, my_u8),
+			_ => panic!("Should have read 13u8"),
+		}
+	}
+
+
+	#[test]
+	fn should_read_3784u16_from_11_bits() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b1111111011001000]));
+
+		match br.read_u16_from_n_bits(11) {
+			Ok(my_u16) => assert_eq!(3784, my_u16),
+			_ => panic!("Should have read 3784u16"),
 		}
 	}
 }
