@@ -1,4 +1,7 @@
-Analysis of xxxxxyyyyy.txt.gz
+Analysis of xxxxxyyyyy.txt.gz:
+1f8b 0808 8e30 0456 0003 7878 7878 7879
+7979 7979 2e74 7874 00ab a800 824a 1000
+0042 62dd 640a 0000 00
 
 Gzip Header
 ===========
