@@ -22,6 +22,7 @@ pub struct BitReader<R: Read> {
 	inner: BufReader<R>,
 	bit_pos: u8,
 	current_byte: Option<u8>,
+	pub global_bit_pos: usize,
 }
 
 impl<R: Read> BitReader<R> {
@@ -30,6 +31,7 @@ impl<R: Read> BitReader<R> {
 			inner: BufReader::new(inner),
 			bit_pos: 0,
 			current_byte: None,
+			global_bit_pos: 0,
 		}
 	}
 
@@ -55,9 +57,13 @@ impl<R: Read> BitReader<R> {
 		match (self.current_byte, self.read_exact(buf)) {
 			(Some(byte), Ok(())) => {
 				self.current_byte = Some(buf[0]);
+				self.global_bit_pos += 8;
 				Ok((byte >> self.bit_pos) | (buf[0] << (8 - self.bit_pos)))
 			},
-			(None, Ok(())) => Ok(buf[0]),
+			(None, Ok(())) => {
+				self.global_bit_pos += 8;
+				Ok(buf[0])
+			},
 			(_, Err(_)) => Err(BitReaderError::Unspecified),
 		}
 	}
@@ -68,9 +74,13 @@ impl<R: Read> BitReader<R> {
 		match (self.current_byte, self.read_exact(buf)) {
 			(Some(byte), Ok(())) => {
 				self.current_byte = Some(buf[1]);
+				self.global_bit_pos += 16;
 				Ok(((byte as u16) >> self.bit_pos) | ((buf[0] as u16) << (8 - self.bit_pos)) | ((buf[1] as u16) << (16 - self.bit_pos)))
 			},
-			(None, Ok(())) => Ok(((buf[1] as u16) << 8) | (buf[0] as u16)),
+			(None, Ok(())) => {
+				self.global_bit_pos += 16;
+				Ok(((buf[1] as u16) << 8) | (buf[0] as u16))
+			},
 			(_, Err(_)) => Err(BitReaderError::Unspecified),
 		}
 	}
@@ -86,6 +96,7 @@ impl<R: Read> BitReader<R> {
 		match (self.current_byte, self.bit_pos) {
 			(Some(byte), bit_pos) => {
 				self.bit_pos = (self.bit_pos + 1) % 8;
+				self.global_bit_pos += 1;
 				if self.bit_pos == 0 {
 					self.current_byte = None;
 				}
@@ -97,6 +108,7 @@ impl<R: Read> BitReader<R> {
 					Ok(()) => {
 						self.current_byte = Some(buf[0]);
 						self.bit_pos = 1;
+						self.global_bit_pos += 1;
 						Ok(buf[0] & 1 == 1)
 					},
 					Err(_) => Err(BitReaderError::Unspecified),
@@ -129,6 +141,24 @@ impl<R: Read> BitReader<R> {
 			match self.read_bit() {
 				Ok(true) => my_u8 = my_u8 | (1 << i),
 				Ok(false) => {},
+				Err(_) => return Err(BitReaderError::Unspecified),
+			}
+		}
+
+		Ok(my_u8)
+	}
+
+	pub fn read_u8_from_n_bits_reverse(&mut self, n: usize) -> Result<u8, BitReaderError> {
+		if n > 8 {
+			return Err(BitReaderError::TooManyBitsForU8);
+		}
+
+		let mut my_u8 = 0;
+
+		for i in 0..n {
+			match self.read_bit() {
+				Ok(true) => my_u8 = (my_u8 << 1) | 1,
+				Ok(false) => my_u8 = (my_u8 << 1),
 				Err(_) => return Err(BitReaderError::Unspecified),
 			}
 		}
@@ -401,7 +431,7 @@ mod tests {
 	}
 
 	#[test]
-	fn should_read_13u8_from_5_bits() {
+	fn should_read_29u8_from_5_bits() {
 		use super::*;
 		use std::io::{ Cursor };
 
@@ -409,7 +439,20 @@ mod tests {
 
 		match br.read_u8_from_n_bits(5) {
 			Ok(my_u8) => assert_eq!(29, my_u8),
-			_ => panic!("Should have read 13u8"),
+			_ => panic!("Should have read 29u8"),
+		}
+	}
+
+	#[test]
+	fn should_read_9u8_from_5_bits_reverse() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b00110010]));
+
+		match br.read_u8_from_n_bits_reverse(5) {
+			Ok(my_u8) => assert_eq!(9, my_u8),
+			_ => panic!("Should have read 9u8"),
 		}
 	}
 

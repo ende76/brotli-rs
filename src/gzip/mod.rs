@@ -334,6 +334,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::Identification1(id) => {
 					assert_eq!(Identification::Gzip, id);
+					println!("ID1 {:?}", id);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.header.id1 = Some(id);
 					self.state = match self.parse_identification2() {
 						Ok(state) => state,
@@ -342,6 +344,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::Identification2(id) => {
 					assert_eq!(Identification::Gzip, id);
+					println!("ID2 {:?}", id);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.header.id2 = Some(id);
 					self.state = match self.parse_compression_method() {
 						Ok(state) => state,
@@ -350,6 +354,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::CompressionMethod(cm) => {
 					assert_eq!(CompressionMethod::Deflate, cm);
+					println!("CM {:?}", cm);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.header.cm = Some(cm);
 					self.state = match self.parse_flags() {
 						Ok(state) => state,
@@ -358,6 +364,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::Flags(flags) => {
 					self.header.flags = Some(flags);
+					println!("Flags {:?}", self.header.flags);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = match self.parse_mtime() {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -365,6 +373,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::MTime(mtime) => {
 					self.header.mtime = Some(mtime);
+					println!("MTime {:?}", mtime);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = match self.parse_xfl() {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -372,6 +382,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::ExtraFlags(xfl) => {
 					self.header.xfl = Some(xfl);
+					println!("XFL {:?}", self.header.xfl);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = match self.parse_os() {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -379,6 +391,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::OS(os) => {
 					self.header.os = Some(os);
+					println!("OS {:?}", self.header.os);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = State::ParsingXLen(self.header.flags.as_ref().unwrap().fextra);
 				},
 				State::ParsingXLen(true) => {
@@ -393,6 +407,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::XLen(xlen) => {
 					self.header.xlen = Some(xlen);
+					println!("XLEN {:?}", xlen);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = match self.parse_extra_field(xlen) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -400,6 +416,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::ExtraField(extra_field) => {
 					self.header.extra_field = Some(extra_field);
+					println!("Extra Field {:?}", self.header.extra_field);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = State::ParsingFileName(self.header.flags.as_ref().unwrap().fname);
 				},
 				State::ParsingFileName(true) => {
@@ -414,6 +432,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::FileName(file_name) => {
 					self.header.file_name = Some(file_name);
+					println!("File Name {:?}", self.header.file_name);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = State::ParsingFileComment(self.header.flags.as_ref().unwrap().fcomment);
 				},
 				State::ParsingFileComment(true) => {
@@ -428,6 +448,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::FileComment(file_comment) => {
 					self.header.file_comment = Some(file_comment);
+					println!("File Comment {:?}", self.header.file_comment);
+					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = State::ParsingCRC16(self.header.flags.as_ref().unwrap().fhcrc);
 				},
 				State::ParsingCRC16(false) => {

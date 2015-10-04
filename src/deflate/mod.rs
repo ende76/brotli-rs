@@ -161,6 +161,9 @@ impl Decompressor {
 		if count_extra_bits == 0 {
 			Ok(State::Length(base_length))
 		} else {
+
+			println!("Count extra bits for length code = {:?}", count_extra_bits);
+
 			match in_stream.read_u8_from_n_bits(count_extra_bits) {
 				Ok(my_u8) => Ok(State::Length(base_length + (my_u8 as Length))),
 				Err(_) => Err(DecompressorError::UnexpectedEOF),
@@ -169,7 +172,7 @@ impl Decompressor {
 	}
 
 	fn parse_distance_code_for_length<R: Read>(ref mut in_stream: &mut BitReader<R>, length: Length) -> result::Result<State, DecompressorError> {
-		match in_stream.read_u8_from_n_bits(5) {
+		match in_stream.read_u8_from_n_bits_reverse(5) {
 			Ok(distance_code) => Ok(State::LengthDistanceCode((length, distance_code))),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
@@ -195,8 +198,12 @@ impl Decompressor {
 		};
 
 		if count_extra_bits == 0 {
+
 			Ok(State::LengthDistance((length, base_distance)))
 		} else {
+
+			println!("Count extra bits for distance code = {:?}", count_extra_bits);
+
 			match in_stream.read_u16_from_n_bits(count_extra_bits) {
 				Ok(my_u16) => Ok(State::LengthDistance((length, base_distance + (my_u16 as Distance)))),
 				Err(_) => Err(DecompressorError::UnexpectedEOF),
@@ -217,6 +224,10 @@ impl Decompressor {
 				},
 				State::BFinal(bfinal) => {
 					self.header.bfinal = Some(bfinal);
+
+					println!("BFinal = {:?}", self.header.bfinal);
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+
 					self.state = match Self::parse_btype(*in_stream) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -224,6 +235,10 @@ impl Decompressor {
 				},
 				State::BType(btype) => {
 					self.header.btype = Some(btype.clone());
+
+					println!("BType = {:?}", self.header.btype);
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+
 					self.state = State::HandlingHuffmanCodes(btype);
 				},
 				State::HandlingHuffmanCodes(BType::NoCompression) => {
@@ -251,6 +266,7 @@ impl Decompressor {
 					self.output_buf.push(byte as u8);
 
 					println!("Literal byte = {:?}", byte);
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::parse_next_symbol(*in_stream, self.huffman_codes.as_ref().unwrap()) {
 						Ok(state) => state,
@@ -269,6 +285,7 @@ impl Decompressor {
 				State::Symbol(length_code @ 257...285) => {
 					// length code
 					println!("length code {:?}", length_code);
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 					self.state = match Self::parse_extra_bits_for_length_code(*in_stream, length_code) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -279,6 +296,7 @@ impl Decompressor {
 				},
 				State::Length(length) => {
 					println!("Length {:?}", length);
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::parse_distance_code_for_length(*in_stream, length) {
 						Ok(state) => state,
@@ -287,6 +305,7 @@ impl Decompressor {
 				},
 				State::LengthDistanceCode((length, distance_code)) => {
 					println!("<Length, Distance Code> = {:?}", (length, distance_code));
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 					self.state = match Self::parse_extra_bits_for_distance_code(*in_stream, (length, distance_code)) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -294,6 +313,7 @@ impl Decompressor {
 				},
 				State::LengthDistance((length, distance)) => {
 					println!("<Length, Distance> = {:?}", (length, distance));
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					let l = self.output_buf.len();
 					let from = l - distance as usize;
@@ -302,8 +322,8 @@ impl Decompressor {
 					let sl = slice.len();
 
 					for i in 0..length as usize{
-						self.output_buf.push(slice[i % sl]);
-						buf.push_front(slice[i % sl]);
+						self.output_buf.push(slice[(length as usize - i - 1) % sl]);
+						buf.push_front(slice[(length as usize - i - 1) % sl]);
 					}
 
 					self.state = match Self::parse_next_symbol(*in_stream, self.huffman_codes.as_ref().unwrap()) {
