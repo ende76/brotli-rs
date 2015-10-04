@@ -155,10 +155,10 @@ impl<R: Read> BitReader<R> {
 
 		let mut my_u8 = 0;
 
-		for i in 0..n {
+		for _ in 0..n {
 			match self.read_bit() {
 				Ok(true) => my_u8 = (my_u8 << 1) | 1,
-				Ok(false) => my_u8 = (my_u8 << 1),
+				Ok(false) => my_u8 = my_u8 << 1,
 				Err(_) => return Err(BitReaderError::Unspecified),
 			}
 		}
