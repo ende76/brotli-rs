@@ -1,6 +1,7 @@
 extern crate compression;
 
 #[test]
+/// Simple first test
 fn should_decompress_xxxxxyyyyy() {
 	use std::io::{ Cursor, Read };
 	use compression::gzip::Decompressor;
@@ -15,6 +16,7 @@ fn should_decompress_xxxxxyyyyy() {
 }
 
 #[test]
+/// Tests distance codes being read correctly, and output bytes being appened in the right order to output buffer
 fn should_decompress_abc() {
 	use std::io::{ Cursor, Read };
 	use compression::gzip::Decompressor;
@@ -27,4 +29,27 @@ fn should_decompress_abc() {
 	let _ = Decompressor::new(gzip_stream).read_to_string(&mut decompressed);
 
 	assert_eq!("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", decompressed);
+}
+
+#[test]
+/// Tests file with dynamic huffman codes
+fn should_decompress_abccba() {
+	use std::io::{ Cursor, Read };
+	use compression::gzip::Decompressor;
+	use compression::bitreader::BitReader;
+	use std::fs::File;
+
+	let gzip_stream = BitReader::new(Cursor::new(vec![
+		0x1f, 0x8b, 0x08, 0x08, 0xbf, 0x72, 0x10, 0x56, 0x00, 0x03, 0x61, 0x62, 0x63, 0x63, 0x62, 0x61,
+		0x2e, 0x74, 0x78, 0x74, 0x00, 0x9d, 0xcb, 0xb7, 0x01, 0x00, 0x20, 0x08, 0x00, 0xb0, 0x5b, 0xb1,
+		0x63, 0x45, 0xec, 0x5e, 0xef, 0x0f, 0x66, 0x0f, 0x08, 0xa9, 0xb4, 0xb1, 0x0e, 0x7d, 0x88, 0x29,
+		0x17, 0xaa, 0xdc, 0xfa, 0x98, 0x6b, 0x9f, 0x7b, 0xcf, 0x5e, 0x73, 0xf4, 0xc6, 0x95, 0x4a, 0x4e,
+		0x31, 0x78, 0x74, 0xd6, 0x68, 0x25, 0x05, 0xc0, 0xc7, 0x79, 0x72, 0xf1, 0x8d, 0xd6, 0x68, 0x00,
+		0x00, 0x00
+	]));
+	let mut decompressed = &mut String::new();
+
+	let _ = Decompressor::new(gzip_stream).read_to_string(&mut decompressed);
+
+	assert_eq!("abcdefghijklmnopqrstuvwxyzzyxwvutsrqponmlkjihgfedcbaabcdefghijklmnopqrstuvwxyzzyxwvutsrqponmlkjihgfedcba", decompressed);
 }
