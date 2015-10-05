@@ -85,6 +85,7 @@ enum State {
 	HCLen(HCLen),
 	CodeLengthsForCodeLengthAlphabet(CodeLengths),
 	HuffmanCodesForCodeLengths(HuffmanCodes),
+	CodeLengths((CodeLengths, CodeLengths)),
 	HuffmanCodes((HuffmanCodes, HuffmanCodes)),
 	Symbol(Symbol),
 	Length(Length),
@@ -145,9 +146,14 @@ impl Decompressor {
 		}
 	}
 
-	fn create_fixed_huffman_codes() -> result::Result<State, DecompressorError> {
+	fn create_fixed_huffman_codelengths() -> result::Result<State, DecompressorError> {
 		let lengths_literal_length = [vec!(8; 144), vec!(9; 112), vec!(7; 24), vec!(8; 8)].concat();
 		let lengths_distance = [vec!(5; 32)].concat();
+
+		Ok(State::CodeLengths((lengths_literal_length, lengths_distance)))
+	}
+
+	fn create_huffman_codes(lengths_literal_length: CodeLengths, lengths_distance: CodeLengths) -> result::Result<State, DecompressorError> {
 
 		Ok(State::HuffmanCodes((huffman::codes_from_lengths(lengths_literal_length), huffman::codes_from_lengths(lengths_distance))))
 	}
@@ -277,7 +283,10 @@ impl Decompressor {
 		}
 		println!("code_lengths = {:?}, count = {:?}", code_lengths, code_lengths.len());
 
-		unimplemented!();
+		let lengths_literal_length = code_lengths[0..hlit as usize].to_vec();
+		let lengths_distance = code_lengths[hlit as usize..(hlit as usize + hdist as usize)].to_vec();
+
+		Ok(State::CodeLengths((lengths_literal_length, lengths_distance)))
 	}
 
 	fn parse_next_symbol<R: Read>(ref mut in_stream: &mut BitReader<R>, huffman_codes: &HuffmanCodes) -> result::Result<State, DecompressorError> {
@@ -404,7 +413,7 @@ impl Decompressor {
 					unimplemented!();
 				},
 				State::HandlingHuffmanCodes(BType::CompressedWithFixedHuffmanCodes) => {
-					self.state = match Self::create_fixed_huffman_codes() {
+					self.state = match Self::create_fixed_huffman_codelengths() {
 						Ok(state) => state,
 						Err(e) => panic!(e),
 					};
@@ -474,6 +483,12 @@ impl Decompressor {
 						Ok(state) => state,
 						Err(e) => panic!(e),
 					}
+				},
+				State::CodeLengths((lengths_literal_length, lengths_distance)) => {
+					self.state = match Self::create_huffman_codes(lengths_literal_length, lengths_distance) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
 				},
 				State::HuffmanCodes((huffman_codes_literal_length, huffman_codes_distance)) => {
 					self.huffman_codes_literal_length = Some(huffman_codes_literal_length);
