@@ -4,7 +4,6 @@ fn main() {
 	use std::io::{ Cursor, Read };
 	use compression::gzip::Decompressor;
 	use compression::bitreader::BitReader;
-	use std::fs::File;
 
 	let gzip_stream = BitReader::new(Cursor::new(vec![
 		0x1f, 0x8b, 0x08, 0x08, 0xbf, 0x72, 0x10, 0x56, 0x00, 0x03, 0x61, 0x62, 0x63, 0x63, 0x62, 0x61,
@@ -14,8 +13,15 @@ fn main() {
 		0x31, 0x78, 0x74, 0xd6, 0x68, 0x25, 0x05, 0xc0, 0xc7, 0x79, 0x72, 0xf1, 0x8d, 0xd6, 0x68, 0x00,
 		0x00, 0x00
 	]));
-	let mut decompressed = &mut String::new();
+	// let gzip_stream = BitReader::new(Cursor::new(vec![
+	// 	0x1f, 0x8b, 0x08, 0x08, 0xbf, 0x72, 0x10, 0x56, 0x00, 0x03, 0x61, 0x62, 0x63, 0x63, 0x62, 0x61,
+	// 	0x2e, 0x74, 0x78, 0x74, 0x00, 0b00001101, 0b11000000, 0b00000001, 0b00001001, 0b00000000000,
+	// 	0b00000000, 0b00000000, 0b10000000, 0b00100000, 0b11111010, 0b01111111, 0b11011010, 0b01101100,
+	// ]));
 
+	// "01 01 01 01"
+
+	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(gzip_stream).read_to_string(&mut decompressed);
 
 	assert_eq!("abcdefghijklmnopqrstuvwxyzzyxwvutsrqponmlkjihgfedcbaabcdefghijklmnopqrstuvwxyzzyxwvutsrqponmlkjihgfedcba", decompressed);

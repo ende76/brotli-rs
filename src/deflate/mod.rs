@@ -37,6 +37,10 @@ enum BType {
 	CompressedWithDynamicHuffmanCodes,
 }
 
+type HLit = u16;
+type HDist = u8;
+type HCLen = u8;
+type CodeLengths = Vec<usize>;
 type HuffmanCodes = huffman::tree::Tree;
 type Symbol = u16;
 type Length = u16;
@@ -49,6 +53,11 @@ type LengthDistance = (Length, Distance);
 struct Header {
 	bfinal: Option<BFinal>,
 	btype: Option<BType>,
+	hlit: Option<HLit>,
+	hdist: Option<HDist>,
+	hclen: Option<HCLen>,
+	code_lengths_for_code_length_alphabet: Option<CodeLengths>,
+	huffman_codes_code_length: Option<HuffmanCodes>,
 }
 
 impl Header {
@@ -56,6 +65,11 @@ impl Header {
 		Header{
 			bfinal: None,
 			btype: None,
+			hlit: None,
+			hdist: None,
+			hclen: None,
+			code_lengths_for_code_length_alphabet: None,
+			huffman_codes_code_length: None,
 		}
 	}
 }
@@ -66,6 +80,11 @@ enum State {
 	BFinal(BFinal),
 	BType(BType),
 	HandlingHuffmanCodes(BType),
+	HLit(HLit),
+	HDist(HDist),
+	HCLen(HCLen),
+	CodeLengthsForCodeLengthAlphabet(CodeLengths),
+	HuffmanCodesForCodeLengths(HuffmanCodes),
 	HuffmanCodes((HuffmanCodes, HuffmanCodes)),
 	Symbol(Symbol),
 	Length(Length),
@@ -131,6 +150,134 @@ impl Decompressor {
 		let lengths_distance = [vec!(5; 32)].concat();
 
 		Ok(State::HuffmanCodes((huffman::codes_from_lengths(lengths_literal_length), huffman::codes_from_lengths(lengths_distance))))
+	}
+
+	fn create_huffman_codes_for_code_lengths(lengths_code_lengths: CodeLengths) ->  result::Result<State, DecompressorError> {
+
+		Ok(State::HuffmanCodesForCodeLengths(huffman::codes_from_lengths(lengths_code_lengths)))
+	}
+
+	fn parse_hlit<R: Read>(ref mut in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+		match in_stream.read_u16_from_n_bits(5) {
+			Ok(hlit) => Ok(State::HLit(hlit + 257)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_hdist<R: Read>(ref mut in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+		match in_stream.read_u8_from_n_bits(5) {
+			Ok(hdist) => Ok(State::HDist(hdist + 1)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_hclen<R: Read>(ref mut in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+		match in_stream.read_u8_from_n_bits(4) {
+			Ok(hclen) => Ok(State::HCLen(hclen + 4)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_code_lengths_for_code_length_alphabet<R: Read>(ref mut in_stream: &mut BitReader<R>, hclen: u8) -> result::Result<State, DecompressorError> {
+		let mut code_lengths = vec![0; 19];
+		let alphabet_code_lengths = &[16usize, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+
+		for i in 0..hclen as usize {
+			match in_stream.read_u8_from_n_bits(3) {
+				Ok(code_length) => code_lengths[alphabet_code_lengths[i]] = code_length as usize,
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			}
+		}
+
+		Ok(State::CodeLengthsForCodeLengthAlphabet(code_lengths))
+	}
+
+	fn parse_code_lengths_for_length_and_distance<R: Read>(ref mut in_stream: &mut BitReader<R>, huffman_codes: &HuffmanCodes, hlit: HLit, hdist: HDist) -> result::Result<State, DecompressorError> {
+		let expected_count = hlit as usize + hdist as usize;
+		let mut code_lengths = Vec::with_capacity(expected_count);
+		let mut count_code_lengths = 0usize;
+
+		println!("Expected Count = {:?}", expected_count);
+
+		while count_code_lengths < expected_count {
+			let mut tree = huffman_codes.clone();
+			let symbol = {
+				let length_symbol;
+
+				loop {
+					match in_stream.read_bit() {
+						Ok(bit) =>
+							match tree.lookup(bit) {
+								Some(Tree::Leaf(symbol)) => {
+									length_symbol = symbol;
+									break;
+								},
+								Some(inner) => tree = inner,
+								None => unreachable!(),
+							},
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					}
+				}
+
+				length_symbol
+			};
+
+			let length_code = symbol as usize;
+
+			println!("Length Code = {:?}", length_code);
+
+			match length_code {
+				0...15 => {
+					code_lengths.push(length_code);
+					count_code_lengths += 1;
+				},
+				16 => {
+					let last_code_length = code_lengths[count_code_lengths - 1];
+					let repeat = match in_stream.read_u8_from_n_bits(2) {
+						Ok(my_u8) => my_u8 + 3,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+
+					println!("Repeat = {:?}", repeat);
+
+					for _ in 0..repeat {
+						code_lengths.push(last_code_length);
+						count_code_lengths += 1;
+					}
+				},
+				17 => {
+					let repeat = match in_stream.read_u8_from_n_bits(3) {
+						Ok(my_u8) => my_u8 + 3,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+
+					println!("Repeat = {:?}", repeat);
+
+					for _ in 0..repeat {
+						code_lengths.push(0);
+						count_code_lengths += 1;
+					}
+				},
+				18 => {
+					let repeat = match in_stream.read_u8_from_n_bits(7) {
+						Ok(my_u8) => my_u8 + 11,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+
+					println!("Repeat = {:?}", repeat);
+
+					for _ in 0..repeat {
+						code_lengths.push(0);
+						count_code_lengths += 1;
+					}
+				},
+				_ => break,
+			}
+
+		}
+		println!("code_lengths = {:?}, count = {:?}", code_lengths, code_lengths.len());
+
+		unimplemented!();
 	}
 
 	fn parse_next_symbol<R: Read>(ref mut in_stream: &mut BitReader<R>, huffman_codes: &HuffmanCodes) -> result::Result<State, DecompressorError> {
@@ -260,10 +407,73 @@ impl Decompressor {
 					self.state = match Self::create_fixed_huffman_codes() {
 						Ok(state) => state,
 						Err(e) => panic!(e),
-					}
+					};
 				},
 				State::HandlingHuffmanCodes(BType::CompressedWithDynamicHuffmanCodes) => {
-					unimplemented!();
+					self.state = match Self::parse_hlit(*in_stream) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					};
+				},
+				State::HLit(hlit) => {
+					self.header.hlit = Some(hlit);
+
+					println!("HLit = {:?}", hlit);
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+
+					self.state = match Self::parse_hdist(*in_stream) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					}
+				},
+				State::HDist(hdist) => {
+					self.header.hdist = Some(hdist);
+
+					println!("HDist = {:?}", hdist);
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+
+					self.state = match Self::parse_hclen(*in_stream) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					}
+				},
+				State::HCLen(hclen) => {
+					self.header.hclen = Some(hclen);
+
+					println!("HCLen = {:?}", hclen);
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+
+					self.state = match Self::parse_code_lengths_for_code_length_alphabet(*in_stream, self.header.hclen.unwrap()) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					}
+				},
+				State::CodeLengthsForCodeLengthAlphabet(code_lengths) => {
+					self.header.code_lengths_for_code_length_alphabet = Some(code_lengths);
+
+					println!("Code Lengths for Code Length Alphabet = {:?}", self.header.code_lengths_for_code_length_alphabet.as_ref().unwrap().clone());
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+
+					self.state = match Self::create_huffman_codes_for_code_lengths(self.header.code_lengths_for_code_length_alphabet.as_ref().unwrap().clone()) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					}
+				},
+				State::HuffmanCodesForCodeLengths(huffman_codes_code_length) => {
+					self.header.huffman_codes_code_length = Some(huffman_codes_code_length);
+
+					println!("Huffman Codes for Code Lengths = {:?}", self.header.huffman_codes_code_length);
+					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+
+					self.state = match Self::parse_code_lengths_for_length_and_distance(
+						*in_stream,
+						self.header.huffman_codes_code_length.as_ref().unwrap(),
+						self.header.hlit.unwrap(),
+						self.header.hdist.unwrap(),
+					) {
+						Ok(state) => state,
+						Err(e) => panic!(e),
+					}
 				},
 				State::HuffmanCodes((huffman_codes_literal_length, huffman_codes_distance)) => {
 					self.huffman_codes_literal_length = Some(huffman_codes_literal_length);
