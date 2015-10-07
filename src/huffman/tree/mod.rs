@@ -14,12 +14,19 @@ pub enum Tree {
 	Inner(Node),
 }
 
+const EMPTY_NODE: Tree = Tree::Inner(Node{
+	left: None,
+	right: None,
+});
+
+
 impl Tree {
 	pub fn new() -> Tree {
-		Tree::Inner(Node{
-			left: None,
-			right: None,
-		})
+		EMPTY_NODE
+	}
+
+	pub fn is_empty(&self) -> bool {
+		*self == EMPTY_NODE
 	}
 
 	pub fn insert(&mut self, code: Vec<bool>, symbol: Symbol) {
@@ -117,16 +124,24 @@ impl Tree {
 }
 
 
+// These are not very good tests, because they rely
+// on implementation details, for the tree data structure
 mod tests {
 	#[test]
 	fn should_create_empty_tree() {
-		use super::{Tree, Node};
-		use super::Tree::Inner;
+		use super::Tree;
+		assert!(Tree::new().is_empty());
+	}
 
-		assert_eq!(Tree::new(), Inner(Node{
-			left: None,
-			right: None,
-		}));
+	#[test]
+	fn should_create_different_instances() {
+		use super::Tree;
+		let mut tree_0 = Tree::new();
+		let mut tree_1 = Tree::new();
+
+		tree_0.insert(vec![false], 666);
+		assert!(!tree_0.is_empty());
+		assert!(tree_1.is_empty());
 	}
 
 	#[test]
