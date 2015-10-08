@@ -275,6 +275,8 @@ impl<R: Read> Decompressor<R> {
 					self.state = State::HeaderMetaBlockBegin;
 				},
 				State::HeaderMetaBlockBegin => {
+					self.meta_block.header = MetaBlockHeader::new();
+
 					self.state = match self.parse_is_last() {
 						Ok(state) => state,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
@@ -291,7 +293,10 @@ impl<R: Read> Decompressor<R> {
 				State::IsLast(false) => {
 					self.meta_block.header.is_last = Some(false);
 
-					unimplemented!()
+					self.state = match self.parse_m_nibbles() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
 				},
 				State::IsLastEmpty(true) => {
 					self.meta_block.header.is_last_empty = Some(true);
@@ -327,7 +332,17 @@ impl<R: Read> Decompressor<R> {
 				State::MSkipBytes(0) => {
 					self.meta_block.header.m_skip_bytes = Some(0);
 
-					self.state = State::StreamEnd;
+					match self.in_stream.read_u8_from_byte_tail() {
+						Ok(0) => {},
+						Ok(_) => return Err(DecompressorError::NonZeroFillBit),
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+
+					self.state = if self.meta_block.header.is_last.unwrap() {
+						State::StreamEnd
+					} else {
+						State::HeaderMetaBlockBegin
+					};
 				},
 				State::MSkipBytes(m_skip_bytes) => {
 					self.meta_block.header.m_skip_bytes = Some(m_skip_bytes);
@@ -353,9 +368,13 @@ impl<R: Read> Decompressor<R> {
 					match self.in_stream.read_fixed_length_string(m_skip_len as usize) {
 						Ok(_) => {},
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
-					}
+					};
 
-					self.state = State::StreamEnd;
+					self.state = if self.meta_block.header.is_last.unwrap() {
+						State::StreamEnd
+					} else {
+						State::HeaderMetaBlockBegin
+					};
 				},
 				State::StreamEnd => {
 					match self.in_stream.read_u8_from_byte_tail() {

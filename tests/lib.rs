@@ -152,3 +152,20 @@ fn should_reject_invalid_stream_with_trailing_bytes() {
 
 	assert_eq!("", decompressed);
 }
+
+
+#[test]
+/// Brotli: Empty file #17
+fn should_decompress_to_empty_string_17() {
+	use std::fs::{ File };
+	use std::io::{ Read };
+	use compression::brotli::Decompressor;
+	use compression::bitreader::BitReader;
+
+	let brotli_stream = BitReader::new(File::open("data/empty.compressed.17").unwrap());
+
+	let mut decompressed = &mut String::new();
+	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+
+	assert_eq!("", decompressed);
+}
