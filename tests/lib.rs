@@ -53,3 +53,21 @@ fn should_decompress_abccba() {
 
 	assert_eq!("abcdefghijklmnopqrstuvwxyzzyxwvutsrqponmlkjihgfedcbaabcdefghijklmnopqrstuvwxyzzyxwvutsrqponmlkjihgfedcba", decompressed);
 }
+
+#[test]
+/// Brotli: Empty file
+fn should_decompress_to_empty_file_0() {
+	use std::io::{ Cursor, Read };
+	use compression::brotli::Decompressor;
+	use compression::bitreader::BitReader;
+
+	let brotli_stream = BitReader::new(Cursor::new(vec![
+		0x06
+	]));
+
+	let mut decompressed = &mut String::new();
+	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+
+	assert_eq!("", decompressed);
+}
+
