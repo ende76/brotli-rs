@@ -45,7 +45,7 @@ impl<R: Read> BitReader<R> {
 			}
 		}
 		if !buf.is_empty() {
-			Err(io::Error::new(ErrorKind::Other, "failed to fill whole buffer"))
+			Err(io::Error::new(ErrorKind::Other, "EOF"))
 		} else {
 			Ok(())
 		}
@@ -54,17 +54,26 @@ impl<R: Read> BitReader<R> {
 	pub fn read_u8(&mut self) -> Result<u8, BitReaderError> {
 		let mut buf = &mut [0u8];
 
-		match (self.current_byte, self.read_exact(buf)) {
-			(Some(byte), Ok(())) => {
+		match (self.bit_pos, self.current_byte, self.read_exact(buf)) {
+			(_, Some(byte), Ok(())) => {
 				self.current_byte = Some(buf[0]);
 				self.global_bit_pos += 8;
 				Ok((byte >> self.bit_pos) | (buf[0] << (8 - self.bit_pos)))
 			},
-			(None, Ok(())) => {
+			(_, None, Ok(())) => {
 				self.global_bit_pos += 8;
 				Ok(buf[0])
 			},
-			(_, Err(_)) => Err(BitReaderError::Unspecified),
+			(0, Some(byte), Err(_)) => {
+				self.current_byte = None;
+				self.global_bit_pos += 8;
+				Ok(byte)
+			},
+			(_, _, Err(e)) => if e.description() == "EOF" {
+				Err(BitReaderError::EOF)
+			} else {
+				Err(BitReaderError::Unspecified)
+			},
 		}
 	}
 
@@ -211,12 +220,12 @@ impl<R: Read> BitReader<R> {
 	}
 
 	pub fn read_fixed_length_string(&mut self, len: usize) -> Result<Vec<u8>, BitReaderError> {
-		let mut my_string = Vec::with_capacity(16);
+		let mut my_string = Vec::with_capacity(len);
 
 		for _ in 0..len {
 			match self.read_u8() {
 				Ok(byte) => my_string.push(byte),
-				Err(_) => return Err(BitReaderError::Unspecified),
+				Err(e) => return Err(BitReaderError::Unspecified),
 			}
 		}
 
@@ -229,6 +238,7 @@ pub enum BitReaderError {
 	Unspecified,
 	TooManyBitsForU8,
 	TooManyBitsForU16,
+	EOF,
 }
 
 impl Display for BitReaderError {
@@ -242,6 +252,7 @@ impl Error for BitReaderError {
 		match self {
 			&BitReaderError::TooManyBitsForU8 => "Tried reading u8 from more than 8 bits",
 			&BitReaderError::TooManyBitsForU16 => "Tried reading u16 from more than 16 bits",
+			&BitReaderError::EOF => "EOF",
 			_ => "Generic error",
 		}
 	}
