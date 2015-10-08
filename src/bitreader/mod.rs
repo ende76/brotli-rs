@@ -225,7 +225,7 @@ impl<R: Read> BitReader<R> {
 		for _ in 0..len {
 			match self.read_u8() {
 				Ok(byte) => my_string.push(byte),
-				Err(e) => return Err(BitReaderError::Unspecified),
+				Err(_) => return Err(BitReaderError::Unspecified),
 			}
 		}
 

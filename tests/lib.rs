@@ -70,7 +70,7 @@ fn should_decompress_to_empty_string() {
 }
 
 #[test]
-/// Brotli: Empty file
+/// Brotli: Empty file #01
 fn should_decompress_to_empty_string_01() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
@@ -88,7 +88,6 @@ fn should_decompress_to_empty_string_01() {
 
 #[test]
 #[should_panic]
-/// Brotli: Empty file
 fn should_reject_invalid_stream_with_trailing_non_zero_bits() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
@@ -103,7 +102,7 @@ fn should_reject_invalid_stream_with_trailing_non_zero_bits() {
 }
 
 #[test]
-/// Brotli: Empty file
+/// Brotli: Empty file #15
 fn should_decompress_to_empty_string_15() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
@@ -111,6 +110,23 @@ fn should_decompress_to_empty_string_15() {
 
 	let brotli_stream = BitReader::new(Cursor::new(vec![
 		0x1a,
+	]));
+
+	let mut decompressed = &mut String::new();
+	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+
+	assert_eq!("", decompressed);
+}
+
+#[test]
+/// Brotli: Empty file #16
+fn should_decompress_to_empty_string_16() {
+	use std::io::{ Cursor, Read };
+	use compression::brotli::Decompressor;
+	use compression::bitreader::BitReader;
+
+	let brotli_stream = BitReader::new(Cursor::new(vec![
+		0x81, 0x16, 0x00, 0x58
 	]));
 
 	let mut decompressed = &mut String::new();
