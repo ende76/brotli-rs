@@ -166,6 +166,18 @@ impl<R: Read> BitReader<R> {
 		Ok(my_u8)
 	}
 
+	pub fn read_u8_from_byte_tail(&mut self) -> Result<u8, BitReaderError> {
+		let bit_pos = self.bit_pos.clone();
+
+		if bit_pos == 0 {
+
+			Ok(0)
+		} else {
+
+			self.read_u8_from_n_bits(8 - bit_pos as usize)
+		}
+	}
+
 	pub fn read_u16_from_n_bits(&mut self, n: usize) -> Result<u16, BitReaderError> {
 		if n > 16 {
 			return Err(BitReaderError::TooManyBitsForU16);
@@ -467,6 +479,22 @@ mod tests {
 		match br.read_u16_from_n_bits(11) {
 			Ok(my_u16) => assert_eq!(1736, my_u16),
 			_ => panic!("Should have read 3784u16"),
+		}
+	}
+
+	#[test]
+	fn should_read_19u8_from_byte_tail() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b10011101]));
+		let _ = br.read_bit();
+		let _ = br.read_bit();
+		let _ = br.read_bit();
+
+		match br.read_u8_from_byte_tail() {
+			Ok(my_u8) => assert_eq!(19, my_u8),
+			_ => panic!("Should have read 11u8"),
 		}
 	}
 }

@@ -137,7 +137,7 @@ mod tests {
 	fn should_create_different_instances() {
 		use super::Tree;
 		let mut tree_0 = Tree::new();
-		let mut tree_1 = Tree::new();
+		let tree_1 = Tree::new();
 
 		tree_0.insert(vec![false], 666);
 		assert!(!tree_0.is_empty());
@@ -238,8 +238,8 @@ mod tests {
 
 	#[test]
 	fn should_lookup_first_level_leaf_left() {
-		use super::{ Tree, Node };
-		use super::Tree::{ Inner, Leaf };
+		use super::{ Tree };
+		use super::Tree::{ Leaf };
 
 		let mut tree = Tree::new();
 		tree.insert(vec![true, false], 6666);
@@ -251,8 +251,8 @@ mod tests {
 
 	#[test]
 	fn should_lookup_first_level_leaf_right() {
-		use super::{ Tree, Node };
-		use super::Tree::{ Inner, Leaf };
+		use super::{ Tree };
+		use super::Tree::{ Leaf };
 
 		let mut tree = Tree::new();
 		tree.insert(vec![false, false], 6666);
@@ -280,8 +280,7 @@ mod tests {
 
 	#[test]
 	fn should_result_in_none() {
-		use super::{ Tree, Node };
-		use super::Tree::{ Inner, Leaf };
+		use super::{ Tree };
 
 		let mut tree = Tree::new();
 		tree.insert(vec![true], 666);
