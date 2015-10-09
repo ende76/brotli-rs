@@ -36,7 +36,7 @@ Brotli Meta-Block Header [repeated]
 [00]               # fill bits until next byte boundary
                     # MUST be zero
 
-Brotli Meta-Block Header [repeated]
+Brotli Meta-Block Header
 ========================
 0x03 = 0000 0011
 
