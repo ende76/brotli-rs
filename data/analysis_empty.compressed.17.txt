@@ -1,4 +1,4 @@
-Analysis of empty.compressed:
+Analysis of empty.compressed.17:
 0x01 0x03 0x06 [0x06 repeated "many times"] 0x03
 
 Brotli Stream Header

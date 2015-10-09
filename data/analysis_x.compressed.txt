@@ -1,4 +1,4 @@
-Analysis of empty.compressed:
+Analysis of x.compressed:
 0x0b 0x00 0x80 0x58 0x03
 
 Brotli Stream Header

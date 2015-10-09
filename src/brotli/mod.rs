@@ -43,12 +43,20 @@ type MSkipLen = u32;
 type MLen = u32;
 type IsUncompressed = bool;
 type MLenLiterals = Vec<u8>;
+type NBltypes = u8;
+type NPostfix = u8;
+type NDirect = u8;
+type ContextMode = u8;
+type ContextModes = Vec<ContextMode>;
+type NTreesL = u8;
+type NTreesD = u8;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Header {
 	wbits: Option<WBits>,
 	wbits_codes: Option<HuffmanCodes>,
 	window_size: Option<usize>,
+	bltype_codes: Option<HuffmanCodes>,
 }
 
 impl Header {
@@ -56,6 +64,7 @@ impl Header {
 		Header{
 			wbits: None,
 			wbits_codes: None,
+			bltype_codes: None,
 			window_size: None,
 		}
 	}
@@ -83,6 +92,14 @@ struct MetaBlockHeader {
 	m_skip_len: Option<MSkipLen>,
 	m_len: Option<MLen>,
 	is_uncompressed: Option<IsUncompressed>,
+	n_bltypes_l: Option<NBltypes>,
+	n_bltypes_i: Option<NBltypes>,
+	n_bltypes_d: Option<NBltypes>,
+	n_postfix: Option<NPostfix>,
+	n_direct: Option<NDirect>,
+	context_modes_literals: Option<ContextModes>,
+	n_trees_l: Option<NTreesL>,
+	n_trees_d: Option<NTreesD>,
 }
 
 impl MetaBlockHeader {
@@ -95,6 +112,14 @@ impl MetaBlockHeader {
 			m_skip_len: None,
 			m_len: None,
 			is_uncompressed: None,
+			n_bltypes_l: None,
+			n_bltypes_i: None,
+			n_bltypes_d: None,
+			n_postfix: None,
+			n_direct: None,
+			context_modes_literals: None,
+			n_trees_l: None,
+			n_trees_d: None,
 		}
 	}
 }
@@ -115,6 +140,15 @@ enum State {
 	MLen(MLen),
 	IsUncompressed(IsUncompressed),
 	MLenLiterals(MLenLiterals),
+	BltypeCodes(HuffmanCodes),
+	NBltypesL(NBltypes),
+	NBltypesI(NBltypes),
+	NBltypesD(NBltypes),
+	NPostfix(NPostfix),
+	NDirect(NDirect),
+	ContextModesLiterals(ContextModes),
+	NTreesL(NTreesL),
+	NTreesD(NTreesD),
 	MetaBlockEnd,
 	StreamEnd,
 }
@@ -291,6 +325,127 @@ impl<R: Read> Decompressor<R> {
 		Ok(State::MLenLiterals(bytes))
 	}
 
+
+	fn create_block_type_codes() -> result::Result<State, DecompressorError> {
+		let bit_patterns = vec![
+			vec![false],
+			vec![true, false, false, false],
+			vec![true, true, false, false],
+			vec![true, false, true, false],
+			vec![true, true, true, false],
+			vec![true, false, false, true],
+			vec![true, true, false, true],
+			vec![true, false, true, true],
+			vec![true, true, true, true],
+		];
+		let symbols = vec![1, 2, 3, 5, 9, 17, 33, 65, 129];
+		let mut codes = Tree::new();
+
+		for i in 0..bit_patterns.len() {
+			codes.insert(bit_patterns[i].clone(), symbols[i]);
+		}
+
+		Ok(State::BltypeCodes(codes))
+	}
+
+	fn parse_n_bltypes(&mut self) -> result::Result<NBltypes, DecompressorError> {
+		let mut tree = self.header.bltype_codes.as_ref().unwrap().clone();
+
+		loop {
+			match self.in_stream.read_bit() {
+				Ok(bit) =>
+					match tree.lookup(bit) {
+						Some(Tree::Leaf(symbol)) => {
+							tree = Tree::Leaf(symbol);
+							break;
+						}
+						Some(inner) => tree = inner,
+						None => unreachable!(),
+					},
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			}
+		}
+
+		let (value, extra_bits) = match tree {
+			Tree::Leaf(symbol @ 1...2) => (symbol, 0),
+			Tree::Leaf(symbol @     3) => (symbol, 1),
+			Tree::Leaf(symbol @     5) => (symbol, 2),
+			Tree::Leaf(symbol @     9) => (symbol, 3),
+			Tree::Leaf(symbol @    17) => (symbol, 4),
+			Tree::Leaf(symbol @    33) => (symbol, 5),
+			Tree::Leaf(symbol @    65) => (symbol, 6),
+			Tree::Leaf(symbol @   129) => (symbol, 7),
+			_ => unreachable!(),
+		};
+
+		match self.in_stream.read_u8_from_n_bits(extra_bits) {
+			Ok(extra) => Ok(value as NBltypes + extra),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_n_bltypes_l(&mut self) -> result::Result<State, DecompressorError> {
+		match self.parse_n_bltypes() {
+			Ok(value) => Ok(State::NBltypesL(value)),
+			Err(e) => Err(e)
+		}
+	}
+
+	fn parse_n_bltypes_i(&mut self) -> result::Result<State, DecompressorError> {
+		match self.parse_n_bltypes() {
+			Ok(value) => Ok(State::NBltypesI(value)),
+			Err(e) => Err(e)
+		}
+	}
+
+	fn parse_n_bltypes_d(&mut self) -> result::Result<State, DecompressorError> {
+		match self.parse_n_bltypes() {
+			Ok(value) => Ok(State::NBltypesD(value)),
+			Err(e) => Err(e)
+		}
+	}
+
+	fn parse_n_postfix(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_u8_from_n_bits(2) {
+			Ok(my_u8) => Ok(State::NPostfix(my_u8)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_n_direct(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_u8_from_n_bits(4) {
+			Ok(my_u8) => Ok(State::NDirect(my_u8 << self.meta_block.header.n_postfix.unwrap())),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_context_modes_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let mut context_modes = Vec::with_capacity(self.meta_block.header.n_bltypes_l.unwrap() as usize);
+
+		for i in 0..context_modes.len() {
+			match self.in_stream.read_u8_from_n_bits(2) {
+				Ok(my_u8) => context_modes[i] = my_u8 as ContextMode,
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			}
+		}
+
+		Ok(State::ContextModesLiterals(context_modes))
+	}
+
+	fn parse_n_trees_l(&mut self) -> result::Result<State, DecompressorError> {
+		match self.parse_n_bltypes() {
+			Ok(value) => Ok(State::NTreesL(value)),
+			Err(e) => Err(e)
+		}
+	}
+
+	fn parse_n_trees_d(&mut self) -> result::Result<State, DecompressorError> {
+		match self.parse_n_bltypes() {
+			Ok(value) => Ok(State::NTreesD(value)),
+			Err(e) => Err(e)
+		}
+	}
+
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
 		loop {
 			match self.state.clone() {
@@ -427,10 +582,20 @@ impl<R: Read> Decompressor<R> {
 
 					println!("MLEN = {:?}", m_len);
 
-					self.state = match self.parse_is_uncompressed() {
-						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
-					}
+					self.state = match (&self.meta_block.header.is_last.unwrap(), &self.header.bltype_codes) {
+						(&false, _) => match self.parse_is_uncompressed() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						},
+						(&true, &None) => match Self::create_block_type_codes() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						},
+						(&true, &Some(_)) => match self.parse_n_bltypes_l() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						},
+					};
 				},
 				State::IsUncompressed(true) => {
 					self.meta_block.header.is_uncompressed = Some(true);
@@ -464,6 +629,111 @@ impl<R: Read> Decompressor<R> {
 					println!("UNCOMPRESSED = false");
 
 					unimplemented!();
+				},
+				State::BltypeCodes(bltype_codes) => {
+					self.header.bltype_codes = Some(bltype_codes);
+
+					self.state = match self.parse_n_bltypes_l() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					}
+				},
+				State::NBltypesL(n_bltypes_l) => {
+					self.meta_block.header.n_bltypes_l = Some(n_bltypes_l);
+
+					println!("NBLTYPESL = {:?}", n_bltypes_l);
+
+					self.state = if n_bltypes_l >= 2 {
+						unimplemented!();
+					} else {
+						match self.parse_n_bltypes_i() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						}
+					}
+				},
+				State::NBltypesI(n_bltypes_i) => {
+					self.meta_block.header.n_bltypes_i = Some(n_bltypes_i);
+
+					println!("NBLTYPESI = {:?}", n_bltypes_i);
+
+					self.state = if n_bltypes_i >= 2 {
+						unimplemented!();
+					} else {
+						match self.parse_n_bltypes_d() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						}
+					}
+				},
+				State::NBltypesD(n_bltypes_d) => {
+					self.meta_block.header.n_bltypes_d = Some(n_bltypes_d);
+
+					println!("NBLTYPESD = {:?}", n_bltypes_d);
+
+					self.state = if n_bltypes_d >= 2 {
+						unimplemented!();
+					} else {
+						match self.parse_n_postfix() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						}
+					};
+				},
+				State::NPostfix(n_postfix) => {
+					self.meta_block.header.n_postfix = Some(n_postfix);
+
+					println!("NPOSTFIX = {:?}", n_postfix);
+
+					self.state = match self.parse_n_direct() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+				},
+				State::NDirect(n_direct) => {
+					self.meta_block.header.n_direct = Some(n_direct);
+
+					println!("NDIRECT = {:?}", n_direct);
+
+					self.state = match self.parse_context_modes_literals() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+				},
+				State::ContextModesLiterals(context_modes) => {
+					self.meta_block.header.context_modes_literals = Some(context_modes);
+
+					println!("Context Modes Literals = {:?}", self.meta_block.header.context_modes_literals);
+
+					self.state = match self.parse_n_trees_l() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+				},
+				State::NTreesL(n_trees_l) => {
+					self.meta_block.header.n_trees_l = Some(n_trees_l);
+
+					println!("NTREESL = {:?}", n_trees_l);
+
+					self.state = if n_trees_l >= 2 {
+						unimplemented!();
+					} else {
+						match self.parse_n_trees_d() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						}
+					};
+				},
+				State::NTreesD(n_trees_d) => {
+					self.meta_block.header.n_trees_d = Some(n_trees_d);
+
+					println!("NTREESD = {:?}", n_trees_d);
+
+					self.state = if n_trees_d >= 2 {
+						unimplemented!();
+					} else {
+						unimplemented!();
+					};
 				},
 				State::MetaBlockEnd => {
 					self.state = if self.meta_block.header.is_last.unwrap() {
