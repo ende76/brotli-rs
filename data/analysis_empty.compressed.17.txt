@@ -1,0 +1,49 @@
+Analysis of empty.compressed:
+0x01 0x03 0x06 [0x06 repeated "many times"] 0x03
+
+Brotli Stream Header
+====================
+0x01 = 0000 0001
+
+000 0001            # WBITS => decodes to 17
+                    # window size = 1 << WBITS - 16 = 131056
+
+Brotli Meta-Block Header
+========================
+0x03 = 0000 0011 [0]
+
+0                   # ISLAST => false => this is not the last meta Meta-Block
+11                  # MNIBBLES => 3 => MNIBBLES == 0 =>
+                    #             Meta-Block is empty, i.e. does not generate
+                    #             uncompressed bytes
+0                   # reserved bit, MUST be zero
+00                  # MSKIPBYTES => 0
+
+[000]               # fill bits until next byte boundary
+                    # MUST be zero
+
+Brotli Meta-Block Header [repeated]
+========================
+0x06 = 0000 0110
+
+0                   # ISLAST => false => this is not the last meta Meta-Block
+11                  # MNIBBLES => 3 => MNIBBLES == 0 =>
+                    #             Meta-Block is empty, i.e. does not generate
+                    #             uncompressed bytes
+0                   # reserved bit, MUST be zero
+00                  # MSKIPBYTES => 0
+
+[00]               # fill bits until next byte boundary
+                    # MUST be zero
+
+Brotli Meta-Block Header [repeated]
+========================
+0x03 = 0000 0011
+
+1                   # ISLAST => true => this is not the last meta Meta-Block
+1                   # ISLASTEMPTY => true => Meta-Block is empty, stream ends here
+
+[0000 00]           # trailing bits
+                    # MUST be zero
+
+End of Stream

@@ -1,0 +1,30 @@
+Analysis of empty.compressed:
+0x0b 0x00 0x80 0x58 0x03
+
+Brotli Stream Header
+====================
+0x0b = 0000 1011
+
+1011                # WBITS => decodes to 22
+                    # window size = 1 << WBITS - 16 = 4194288
+
+Brotli Meta-Block Header
+========================
+0x00 = 0000 0000 [0000]
+
+0                   # ISLAST => false => this is not the last meta Meta-Block
+00                  # MNIBBLES => 0 => MNIBBLES == 4 =>
+
+0x80 = 1000 0000 [0000 0000 0]
+
+0000 0000 0000 0000 # MLEN - 1 == 0 => MLEN == 1
+1                   # ISUNCOMPRESSED => true
+
+
+
+
+
+[0000 00]           # trailing bits
+                    # MUST be zero
+
+End of Stream
