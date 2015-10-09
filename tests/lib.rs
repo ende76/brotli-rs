@@ -172,7 +172,7 @@ fn should_decompress_to_empty_string_17() {
 
 #[test]
 /// Brotli: X file
-fn should_decompress_to_X() {
+fn should_decompress_to_x() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
 	use compression::bitreader::BitReader;
