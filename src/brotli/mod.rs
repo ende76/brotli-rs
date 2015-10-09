@@ -38,6 +38,7 @@ type IsLastEmpty = bool;
 type MNibbles = u8;
 type MSkipBytes = u8;
 type MSkipLen = u32;
+type MLen = u32;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Header {
@@ -76,6 +77,7 @@ struct MetaBlockHeader {
 	m_nibbles: Option<MNibbles>,
 	m_skip_bytes: Option<MSkipBytes>,
 	m_skip_len: Option<MSkipLen>,
+	m_len: Option<MLen>,
 }
 
 impl MetaBlockHeader {
@@ -86,6 +88,7 @@ impl MetaBlockHeader {
 			m_nibbles: None,
 			m_skip_bytes: None,
 			m_skip_len: None,
+			m_len: None,
 		}
 	}
 }
@@ -103,6 +106,7 @@ enum State {
 	MNibbles(MNibbles),
 	MSkipBytes(MSkipBytes),
 	MSkipLen(MSkipLen),
+	MLen(MLen),
 	StreamEnd,
 }
 
@@ -112,6 +116,7 @@ enum DecompressorError {
 	NonZeroFillBit,
 	NonZeroReservedBit,
 	NonZeroTrailerBit,
+	NonZeroTrailerNibble,
 	ExpectedEndOfStream,
 	InvalidMSkipLen,
 }
@@ -130,6 +135,7 @@ impl Error for DecompressorError {
 			&DecompressorError::NonZeroFillBit => "Enocuntered non-zero fill bit",
 			&DecompressorError::NonZeroReservedBit => "Enocuntered non-zero reserved bit",
 			&DecompressorError::NonZeroTrailerBit => "Enocuntered non-zero bit trailing the stream",
+			&DecompressorError::NonZeroTrailerNibble => "Enocuntered non-zero nibble trailing",
 			&DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
 			&DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
 		}
@@ -242,6 +248,22 @@ impl<R: Read> Decompressor<R> {
 		}))
 	}
 
+	fn parse_m_len(&mut self) -> result::Result<State, DecompressorError> {
+		let m_nibbles = self.meta_block.header.m_nibbles.unwrap() as usize;
+		let m_len = match self.in_stream.read_u32_from_n_nibbles(m_nibbles) {
+			Ok(m_len) => m_len,
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
+		};
+
+		if m_nibbles > 4 && (m_len >> ((m_nibbles - 1) * 4) == 0) {
+
+			Err(DecompressorError::NonZeroTrailerNibble)
+		} else {
+
+			Ok(State::MLen(m_len + 1))
+		}
+	}
+
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
 		loop {
 			match self.state.clone() {
@@ -327,7 +349,11 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::MNibbles(m_nibbles) => {
 					self.meta_block.header.m_nibbles = Some(m_nibbles);
-					unimplemented!();
+
+					self.state = match self.parse_m_len() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					}
 				},
 				State::MSkipBytes(0) => {
 					self.meta_block.header.m_skip_bytes = Some(0);
@@ -375,6 +401,12 @@ impl<R: Read> Decompressor<R> {
 					} else {
 						State::HeaderMetaBlockBegin
 					};
+				},
+				State::MLen(m_len) => {
+					self.meta_block.header.m_len = Some(m_len);
+
+					println!("MLEN = {:?}", m_len);
+					unimplemented!();
 				},
 				State::StreamEnd => {
 					match self.in_stream.read_u8_from_byte_tail() {

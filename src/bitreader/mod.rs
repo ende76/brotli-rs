@@ -77,6 +77,53 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	pub fn read_u8_from_nibble(&mut self) -> Result<u8, BitReaderError> {
+		let mut buf = &mut [0u8];
+
+		match (self.bit_pos, self.current_byte) {
+			(0, None) => match self.read_exact(buf) {
+				Ok(()) => {
+					self.global_bit_pos += 4;
+					self.bit_pos = 4;
+					self.current_byte = Some(buf[0]);
+					Ok(buf[0] & 0x0f)
+				},
+				Err(e) => if e.description() == "EOF" {
+					Err(BitReaderError::EOF)
+				} else {
+					Err(BitReaderError::Unspecified)
+				},
+			},
+			(0...3, Some(byte)) => {
+				self.global_bit_pos += 4;
+				self.bit_pos += 4;
+				Ok((byte >> (self.bit_pos - 4)) & 0x0f)
+			},
+			(4, Some(byte)) => {
+				self.global_bit_pos += 4;
+				self.bit_pos = 0;
+				self.current_byte = None;
+				Ok((byte >> 4) & 0x0f)
+			},
+			(bit_pos @ 5...7, Some(byte)) => {
+				match self.read_exact(buf) {
+					Ok(()) => {
+						self.global_bit_pos += 4;
+						self.bit_pos = self.bit_pos - 4;
+						self.current_byte = Some(buf[0]);
+						Ok(((byte >> (bit_pos)) | (buf[0] << (8 - bit_pos))) & 0x0f)
+					},
+					Err(e) => if e.description() == "EOF" {
+						Err(BitReaderError::EOF)
+					} else {
+						Err(BitReaderError::Unspecified)
+					},
+				}
+			},
+			_ => unreachable!(),
+		}
+	}
+
 	pub fn read_u16(&mut self) -> Result<u16, BitReaderError> {
 		let mut buf = &mut [0u8; 2];
 
@@ -99,6 +146,19 @@ impl<R: Read> BitReader<R> {
 			(Ok(my_u16_0), Ok(my_u16_1)) => Ok((my_u16_1 as u32) << 16 | (my_u16_0 as u32)),
 			(_, _) => Err(BitReaderError::Unspecified),
 		}
+	}
+
+	pub fn read_u32_from_n_nibbles(&mut self, n: usize) -> Result<u32, BitReaderError> {
+		let mut my_u32 = 0;
+
+		for i in 0..n {
+			match self.read_u8_from_nibble() {
+				Ok(my_u8) => my_u32 = my_u32 | ((my_u8 as u32) << (4 * i)),
+				Err(e) => return Err(e),
+			}
+		}
+
+		Ok(my_u32)
 	}
 
 	pub fn read_bit(&mut self) -> Result<bool, BitReaderError> {
@@ -293,7 +353,7 @@ mod tests {
 		use std::io::{ Cursor };
 
 		let expected = 0x8b1f;
-		let mut br = BitReader::new(Cursor::new(vec![(expected & 0x00FF) as u8, (expected >> 8) as u8]));
+		let mut br = BitReader::new(Cursor::new(vec![(expected & 0x00ff) as u8, (expected >> 8) as u8]));
 
 		match br.read_u16() {
 			Ok(my_u16) => assert_eq!(expected, my_u16),
@@ -505,7 +565,83 @@ mod tests {
 
 		match br.read_u8_from_byte_tail() {
 			Ok(my_u8) => assert_eq!(19, my_u8),
-			_ => panic!("Should have read 11u8"),
+			_ => panic!("Should have read 19u8"),
+		}
+	}
+
+	#[test]
+	fn should_read_10u8_from_nibble() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b11010101]));
+		let _ = br.read_bit();
+		let _ = br.read_bit();
+		let _ = br.read_bit();
+
+		match br.read_u8_from_nibble() {
+			Ok(my_u8) => assert_eq!(10, my_u8),
+			_ => panic!("Should have read 10u8"),
+		}
+	}
+
+	#[test]
+	fn should_read_10u8_nibble_twice() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b10101010]));
+
+		match br.read_u8_from_nibble() {
+			Ok(my_u8) => assert_eq!(10, my_u8),
+			_ => panic!("Should have read 10u8"),
+		}
+
+		match br.read_u8_from_nibble() {
+			Ok(my_u8) => assert_eq!(10, my_u8),
+			_ => panic!("Should have read 10u8"),
+		}
+	}
+
+	#[test]
+	fn should_read_7u8_nibble_four_times() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b11101111, 0b11101110, 0b11101110]));
+		let _ = br.read_bit();
+
+		match br.read_u8_from_nibble() {
+			Ok(my_u8) => assert_eq!(7, my_u8),
+			_ => panic!("Should have read 7u8"),
+		}
+
+		match br.read_u8_from_nibble() {
+			Ok(my_u8) => assert_eq!(7, my_u8),
+			_ => panic!("Should have read 7u8"),
+		}
+
+		match br.read_u8_from_nibble() {
+			Ok(my_u8) => assert_eq!(7, my_u8),
+			_ => panic!("Should have read 7u8"),
+		}
+
+		match br.read_u8_from_nibble() {
+			Ok(my_u8) => assert_eq!(7, my_u8),
+			_ => panic!("Should have read 7u8"),
+		}
+	}
+
+	#[test]
+	fn should_read_524527u32_from_5_nibbles() {
+		use super::*;
+		use std::io::{ Cursor };
+
+		let mut br = BitReader::new(Cursor::new(vec![0b1110_1111, 0, 0b1110_1000]));
+
+		match br.read_u32_from_n_nibbles(5) {
+			Ok(my_u32) => assert_eq!(524527, my_u32),
+			_ => panic!("Should have read 524527u32"),
 		}
 	}
 }

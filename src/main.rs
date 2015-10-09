@@ -6,7 +6,7 @@ fn main() {
 	use compression::bitreader::BitReader;
 
 	let brotli_stream = BitReader::new(Cursor::new(vec![
-		0x81, 0x16, 0x00, 0x58
+		0x0b, 0x00, 0x80, 0x58, 0x03,
 	]));
 
 	let mut decompressed = &mut String::new();
