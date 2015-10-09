@@ -50,6 +50,39 @@ type ContextMode = u8;
 type ContextModes = Vec<ContextMode>;
 type NTreesL = u8;
 type NTreesD = u8;
+type NSym = u8;
+type Symbol = u16;
+type Symbols = Vec<Symbol>;
+type TreeSelect = bool;
+
+#[derive(Debug, Clone, PartialEq)]
+enum PrefixCodeKind {
+	Simple,
+	Complex,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PrefixCodeSimple {
+	n_sym: Option<NSym>,
+	symbols: Option<Symbols>,
+	tree_select: Option<TreeSelect>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum PrefixCode {
+	Simple(PrefixCodeSimple),
+	Complex,
+}
+
+impl PrefixCode {
+	fn new_simple() -> PrefixCode {
+		PrefixCode::Simple(PrefixCodeSimple {
+			n_sym: None,
+			symbols: None,
+			tree_select: None,
+		})
+	}
+}
 
 #[derive(Debug, Clone, PartialEq)]
 struct Header {
@@ -100,6 +133,7 @@ struct MetaBlockHeader {
 	context_modes_literals: Option<ContextModes>,
 	n_trees_l: Option<NTreesL>,
 	n_trees_d: Option<NTreesD>,
+	prefix_code_literals: Option<PrefixCode>,
 }
 
 impl MetaBlockHeader {
@@ -120,6 +154,7 @@ impl MetaBlockHeader {
 			context_modes_literals: None,
 			n_trees_l: None,
 			n_trees_d: None,
+			prefix_code_literals: None,
 		}
 	}
 }
@@ -149,6 +184,9 @@ enum State {
 	ContextModesLiterals(ContextModes),
 	NTreesL(NTreesL),
 	NTreesD(NTreesD),
+	PrefixCodeLiteralsKind(PrefixCodeKind),
+	NSymLiterals(NSym),
+	SymbolsLiterals(Symbols),
 	MetaBlockEnd,
 	StreamEnd,
 }
@@ -162,6 +200,7 @@ enum DecompressorError {
 	NonZeroTrailerNibble,
 	ExpectedEndOfStream,
 	InvalidMSkipLen,
+	UnexpectedPrefixCodeKind,
 }
 
 impl Display for DecompressorError {
@@ -181,6 +220,7 @@ impl Error for DecompressorError {
 			&DecompressorError::NonZeroTrailerNibble => "Enocuntered non-zero nibble trailing",
 			&DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
 			&DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
+			&DecompressorError::UnexpectedPrefixCodeKind => "Encountered unexpected kind of prefix code",
 		}
 	}
 }
@@ -325,7 +365,6 @@ impl<R: Read> Decompressor<R> {
 		Ok(State::MLenLiterals(bytes))
 	}
 
-
 	fn create_block_type_codes() -> result::Result<State, DecompressorError> {
 		let bit_patterns = vec![
 			vec![false],
@@ -420,7 +459,7 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_context_modes_literals(&mut self) -> result::Result<State, DecompressorError> {
-		let mut context_modes = Vec::with_capacity(self.meta_block.header.n_bltypes_l.unwrap() as usize);
+		let mut context_modes = vec![0; self.meta_block.header.n_bltypes_l.unwrap() as usize];
 
 		for i in 0..context_modes.len() {
 			match self.in_stream.read_u8_from_n_bits(2) {
@@ -444,6 +483,39 @@ impl<R: Read> Decompressor<R> {
 			Ok(value) => Ok(State::NTreesD(value)),
 			Err(e) => Err(e)
 		}
+	}
+
+	fn parse_prefix_code_kind(&mut self) -> result::Result<PrefixCodeKind, DecompressorError> {
+		match self.in_stream.read_u8_from_n_bits(2) {
+			Ok(1) => Ok(PrefixCodeKind::Simple),
+			Ok(_) => Ok(PrefixCodeKind::Complex),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_prefix_code_literals_kind(&mut self) -> result::Result<State, DecompressorError> {
+		match self.parse_prefix_code_kind() {
+			Ok(kind) => Ok(State::PrefixCodeLiteralsKind(kind)),
+			Err(e) => Err(e)
+		}
+	}
+
+	fn parse_n_sym_literals(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_u8_from_n_bits(2) {
+			Ok(my_u8) => Ok(State::NSymLiterals(my_u8 + 1)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_symbols_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let n_sym = match self.meta_block.header.prefix_code_literals.as_ref().unwrap() {
+			&PrefixCode::Simple(ref code) => code.n_sym.unwrap(),
+			_ => unreachable!(),
+		};
+
+		println!("NSYM = {:?}", n_sym);
+
+		unimplemented!();
 	}
 
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
@@ -732,8 +804,64 @@ impl<R: Read> Decompressor<R> {
 					self.state = if n_trees_d >= 2 {
 						unimplemented!();
 					} else {
-						unimplemented!();
+						match self.parse_prefix_code_literals_kind() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						}
 					};
+				},
+				State::PrefixCodeLiteralsKind(PrefixCodeKind::Simple) => {
+					self.meta_block.header.prefix_code_literals = Some(PrefixCode::new_simple());
+
+					println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_code_literals);
+
+					self.state = match self.parse_n_sym_literals() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+				},
+				State::NSymLiterals(n_sym) => {
+					match self.meta_block.header.prefix_code_literals.as_mut().unwrap() {
+						&mut PrefixCode::Simple(ref mut code) => code.n_sym = Some(n_sym),
+						_ => unreachable!(),
+					};
+
+					println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_code_literals);
+
+					self.state = match self.parse_symbols_literals() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					}
+				},
+				State::SymbolsLiterals(symbols) => {
+					match self.meta_block.header.prefix_code_literals.as_mut().unwrap() {
+						&mut PrefixCode::Simple(ref mut code) => code.symbols = Some(symbols),
+						_ => unreachable!(),
+					};
+
+					println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_code_literals);
+
+					self.state = match self.meta_block.header.prefix_code_literals.as_ref().unwrap() {
+						&PrefixCode::Simple(PrefixCodeSimple{
+								n_sym: Some(4),
+								symbols: _,
+								tree_select: _,
+
+						}) => unimplemented!(),
+						&PrefixCode::Simple(PrefixCodeSimple{
+								n_sym: Some(_),
+								symbols: _,
+								tree_select: _,
+
+						}) => unimplemented!(),
+						_ => unreachable!(),
+					}
+				},
+				State::PrefixCodeLiteralsKind(PrefixCodeKind::Complex) => {
+
+					println!("Prefix Codes Kind Literals = {:?}", PrefixCodeKind::Complex);
+
+					unimplemented!();
 				},
 				State::MetaBlockEnd => {
 					self.state = if self.meta_block.header.is_last.unwrap() {
