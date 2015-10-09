@@ -187,6 +187,7 @@ enum State {
 	PrefixCodeLiteralsKind(PrefixCodeKind),
 	NSymLiterals(NSym),
 	SymbolsLiterals(Symbols),
+	PrefixCodeNBltypesIKind(PrefixCodeKind),
 	MetaBlockEnd,
 	StreamEnd,
 }
@@ -511,11 +512,26 @@ impl<R: Read> Decompressor<R> {
 		let n_sym = match self.meta_block.header.prefix_code_literals.as_ref().unwrap() {
 			&PrefixCode::Simple(ref code) => code.n_sym.unwrap(),
 			_ => unreachable!(),
-		};
+		} as usize;
 
 		println!("NSYM = {:?}", n_sym);
 
-		unimplemented!();
+		let mut symbols = vec![0; n_sym];
+		for i in 0..n_sym {
+			symbols[i] = match self.in_stream.read_u8() {
+				Ok(my_u8) => my_u8 as Symbol,
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			}
+		}
+
+		Ok(State::SymbolsLiterals(symbols))
+	}
+
+	fn parse_prefix_code_n_bltypes_i_kind(&mut self) -> result::Result<State, DecompressorError> {
+		match self.parse_prefix_code_kind() {
+			Ok(kind) => Ok(State::PrefixCodeNBltypesIKind(kind)),
+			Err(e) => Err(e)
+		}
 	}
 
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
@@ -852,14 +868,28 @@ impl<R: Read> Decompressor<R> {
 								n_sym: Some(_),
 								symbols: _,
 								tree_select: _,
-
-						}) => unimplemented!(),
+						}) => match self.parse_prefix_code_n_bltypes_i_kind() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						},
 						_ => unreachable!(),
 					}
 				},
 				State::PrefixCodeLiteralsKind(PrefixCodeKind::Complex) => {
 
 					println!("Prefix Codes Kind Literals = {:?}", PrefixCodeKind::Complex);
+
+					unimplemented!();
+				},
+				State::PrefixCodeNBltypesIKind(PrefixCodeKind::Simple) => {
+
+					println!("Prefix Codes Kind NBLTYPESI = {:?}", PrefixCodeKind::Simple);
+
+					unimplemented!();
+				},
+				State::PrefixCodeNBltypesIKind(PrefixCodeKind::Complex) => {
+
+					println!("Prefix Codes Kind NBLTYPESI = {:?}", PrefixCodeKind::Complex);
 
 					unimplemented!();
 				},
