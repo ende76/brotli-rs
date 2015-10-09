@@ -12,7 +12,7 @@ fn main() {
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
 
-	assert_eq!("", decompressed);
+	assert_eq!("X", decompressed);
 
 	println!("{:?}", decompressed);
 }

@@ -26,8 +26,10 @@ pub struct Decompressor<R: Read> {
 	in_stream: BitReader<R>,
 	header: Header,
 	buf: VecDeque<u8>,
+	output_window: Vec<u8>,
 	state: State,
-	meta_block: MetaBlock
+	meta_block: MetaBlock,
+	count_output: usize,
 }
 
 type WBits = u8;
@@ -39,6 +41,8 @@ type MNibbles = u8;
 type MSkipBytes = u8;
 type MSkipLen = u32;
 type MLen = u32;
+type IsUncompressed = bool;
+type MLenLiterals = Vec<u8>;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Header {
@@ -78,6 +82,7 @@ struct MetaBlockHeader {
 	m_skip_bytes: Option<MSkipBytes>,
 	m_skip_len: Option<MSkipLen>,
 	m_len: Option<MLen>,
+	is_uncompressed: Option<IsUncompressed>,
 }
 
 impl MetaBlockHeader {
@@ -89,6 +94,7 @@ impl MetaBlockHeader {
 			m_skip_bytes: None,
 			m_skip_len: None,
 			m_len: None,
+			is_uncompressed: None,
 		}
 	}
 }
@@ -107,6 +113,9 @@ enum State {
 	MSkipBytes(MSkipBytes),
 	MSkipLen(MSkipLen),
 	MLen(MLen),
+	IsUncompressed(IsUncompressed),
+	MLenLiterals(MLenLiterals),
+	MetaBlockEnd,
 	StreamEnd,
 }
 
@@ -148,8 +157,10 @@ impl<R: Read> Decompressor<R> {
 			in_stream: in_stream,
 			header: Header::new(),
 			buf: VecDeque::new(),
+			output_window: Vec::new(),
 			state: State::StreamBegin,
 			meta_block: MetaBlock::new(),
+			count_output: 0,
 		}
 	}
 
@@ -264,6 +275,22 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
+	fn parse_is_uncompressed(&mut self) -> result::Result<State, DecompressorError> {
+		match self.in_stream.read_bit() {
+			Ok(bit) => Ok(State::IsUncompressed(bit)),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
+	fn parse_mlen_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let bytes = match self.in_stream.read_fixed_length_string(self.meta_block.header.m_len.unwrap() as usize) {
+			Ok(bytes) => bytes,
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
+		};
+
+		Ok(State::MLenLiterals(bytes))
+	}
+
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
 		loop {
 			match self.state.clone() {
@@ -288,6 +315,7 @@ impl<R: Read> Decompressor<R> {
 				State::WBits(wbits) => {
 					self.header.wbits = Some(wbits);
 					self.header.window_size = Some((1 << wbits) - 16);
+					self.output_window = vec![0; self.header.window_size.unwrap()];
 
 					println!("(WBITS, Window Size) = {:?}", (wbits, self.header.window_size));
 
@@ -364,11 +392,7 @@ impl<R: Read> Decompressor<R> {
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 
-					self.state = if self.meta_block.header.is_last.unwrap() {
-						State::StreamEnd
-					} else {
-						State::HeaderMetaBlockBegin
-					};
+					self.state = State::MetaBlockEnd;
 				},
 				State::MSkipBytes(m_skip_bytes) => {
 					self.meta_block.header.m_skip_bytes = Some(m_skip_bytes);
@@ -396,17 +420,57 @@ impl<R: Read> Decompressor<R> {
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 
-					self.state = if self.meta_block.header.is_last.unwrap() {
-						State::StreamEnd
-					} else {
-						State::HeaderMetaBlockBegin
-					};
+					self.state = State::MetaBlockEnd;
 				},
 				State::MLen(m_len) => {
 					self.meta_block.header.m_len = Some(m_len);
 
 					println!("MLEN = {:?}", m_len);
+
+					self.state = match self.parse_is_uncompressed() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					}
+				},
+				State::IsUncompressed(true) => {
+					self.meta_block.header.is_uncompressed = Some(true);
+
+					println!("UNCOMPRESSED = true");
+
+					match self.in_stream.read_u8_from_byte_tail() {
+						Ok(0) => {},
+						Ok(_) => return Err(DecompressorError::NonZeroFillBit),
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+
+					self.state = match self.parse_mlen_literals() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					}
+				},
+				State::MLenLiterals(m_len_literals) => {
+					for literal in m_len_literals {
+						self.buf.push_front(literal);
+						self.output_window[self.count_output % self.header.window_size.unwrap() as usize] = literal;
+						self.count_output += 1;
+					}
+
+					self.state = State::MetaBlockEnd;
+					return Ok(self.buf.len());
+				},
+				State::IsUncompressed(false) => {
+					self.meta_block.header.is_uncompressed = Some(false);
+
+					println!("UNCOMPRESSED = false");
+
 					unimplemented!();
+				},
+				State::MetaBlockEnd => {
+					self.state = if self.meta_block.header.is_last.unwrap() {
+						State::StreamEnd
+					} else {
+						State::HeaderMetaBlockBegin
+					};
 				},
 				State::StreamEnd => {
 					match self.in_stream.read_u8_from_byte_tail() {

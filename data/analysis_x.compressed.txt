@@ -20,9 +20,20 @@ Brotli Meta-Block Header
 0000 0000 0000 0000 # MLEN - 1 == 0 => MLEN == 1
 1                   # ISUNCOMPRESSED => true
 
+                    # ignore bits up to the next byte
+                    # boundary; we are already on the
+                    # boundary, so there is nothing
+                    # for us to ignore in this case
+                    # ignored bits MUST be zero
 
+0x58                # MLEN (== 1) bytes of literal data
 
+Brotli Meta-Block Header
+========================
+0x03 = 0000 0011
 
+1                   # ISLAST => true => this is the last meta Meta-Block
+1                   # ISLASTEMPTY => true => the Meta-Block is empty, stream ends at this bit
 
 [0000 00]           # trailing bits
                     # MUST be zero
