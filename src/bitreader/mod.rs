@@ -148,6 +148,24 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	pub fn read_u32_from_n_bits(&mut self, n: usize) -> Result<u32, BitReaderError> {
+		if n > 32 {
+			return Err(BitReaderError::TooManyBitsForU32);
+		}
+
+		let mut my_u32 = 0;
+
+		for i in 0..n {
+			match self.read_bit() {
+				Ok(true) => my_u32 = my_u32 | (1 << i),
+				Ok(false) => {},
+				Err(_) => return Err(BitReaderError::Unspecified),
+			}
+		}
+
+		Ok(my_u32)
+	}
+
 	pub fn read_u32_from_n_nibbles(&mut self, n: usize) -> Result<u32, BitReaderError> {
 		let mut my_u32 = 0;
 
@@ -298,6 +316,7 @@ pub enum BitReaderError {
 	Unspecified,
 	TooManyBitsForU8,
 	TooManyBitsForU16,
+	TooManyBitsForU32,
 	EOF,
 }
 
@@ -312,6 +331,7 @@ impl Error for BitReaderError {
 		match self {
 			&BitReaderError::TooManyBitsForU8 => "Tried reading u8 from more than 8 bits",
 			&BitReaderError::TooManyBitsForU16 => "Tried reading u16 from more than 16 bits",
+			&BitReaderError::TooManyBitsForU32 => "Tried reading u32 from more than 32 bits",
 			&BitReaderError::EOF => "EOF",
 			_ => "Generic error",
 		}
