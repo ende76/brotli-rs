@@ -30,6 +30,12 @@ pub struct Decompressor<R: Read> {
 	state: State,
 	meta_block: MetaBlock,
 	count_output: usize,
+	/// most recent byte in output stream
+	/// used to determine context mode for literals
+	p1: u8,
+	/// second most recent byte in output stream
+	/// used to determine context mode for literals
+	p2: u8,
 }
 
 type WBits = u8;
@@ -42,7 +48,10 @@ type MSkipBytes = u8;
 type MSkipLen = u32;
 type MLen = u32;
 type IsUncompressed = bool;
-type MLenLiterals = Vec<u8>;
+type Literal = u8;
+type Literals = Vec<Literal>;
+type MLenLiterals = Literals;
+type InsertLiterals = Literals;
 type NBltypes = u8;
 type BLen = u32;
 type NPostfix = u8;
@@ -111,6 +120,8 @@ impl Header {
 #[derive(Debug, Clone, PartialEq)]
 struct MetaBlock {
 	header: MetaBlockHeader,
+	count_output: usize,
+	context_modes_literals: Option<ContextModes>,
 	btype_l: Option<NBltypes>,
 	blen_l: Option<BLen>,
 	btype_i: Option<NBltypes>,
@@ -126,12 +137,14 @@ impl MetaBlock {
 	fn new() -> MetaBlock {
 		MetaBlock{
 			header: MetaBlockHeader::new(),
+			count_output: 0,
 			btype_l: None,
 			blen_l: None,
 			btype_i: None,
 			blen_i: None,
 			btype_d: None,
 			blen_d: None,
+			context_modes_literals: None,
 			insert_and_copy_length: None,
 			insert_length: None,
 			copy_length: None,
@@ -153,7 +166,6 @@ struct MetaBlockHeader {
 	n_bltypes_d: Option<NBltypes>,
 	n_postfix: Option<NPostfix>,
 	n_direct: Option<NDirect>,
-	context_modes_literals: Option<ContextModes>,
 	n_trees_l: Option<NTreesL>,
 	n_trees_d: Option<NTreesD>,
 	prefix_code_literals: Option<PrefixCode>,
@@ -176,7 +188,6 @@ impl MetaBlockHeader {
 			n_bltypes_d: None,
 			n_postfix: None,
 			n_direct: None,
-			context_modes_literals: None,
 			n_trees_l: None,
 			n_trees_d: None,
 			prefix_code_literals: None,
@@ -223,6 +234,7 @@ enum State {
 	DataMetaBlockBegin,
 	InsertAndCopyLength(InsertAndCopyLength),
 	InsertLengthAndCopyLength(InsertLengthAndCopyLength),
+	InsertLiterals(Literals),
 	DataMetaBlockEnd,
 	MetaBlockEnd,
 	StreamEnd,
@@ -270,6 +282,8 @@ impl<R: Read> Decompressor<R> {
 			state: State::StreamBegin,
 			meta_block: MetaBlock::new(),
 			count_output: 0,
+			p1: 0,
+			p2: 0,
 		}
 	}
 
@@ -714,6 +728,39 @@ impl<R: Read> Decompressor<R> {
 		Ok(State::InsertLengthAndCopyLength((insert_length, copy_length)))
 	}
 
+	fn parse_insert_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let insert_length = self.meta_block.insert_length.unwrap() as usize;
+		let mut literals = vec![0; insert_length];
+
+		for i in 0..insert_length {
+			match self.meta_block.blen_l {
+				None => {},
+				Some(0) => unimplemented!(),
+				Some(ref mut blen_l) => *blen_l -= 1,
+			}
+
+			literals[i] = match self.meta_block.header.prefix_code_literals {
+				Some(PrefixCode::Simple(PrefixCodeSimple {
+					n_sym: Some(1),
+					symbols: Some(ref symbols),
+					tree_select: _,
+				})) => symbols[0] as Literal,
+				_ => unimplemented!(),
+			}
+		}
+
+		Ok(State::InsertLiterals(literals))
+
+		// match self.meta_block.header.prefix_code_literals {
+		// 	Some(PrefixCode::Simple(PrefixCodeSimple {
+		// 		n_sym: Some(1),
+		// 		symbols: Some(ref symbols),
+		// 		tree_select: _,
+		// 	})) => Ok(State::InsertAndCopyLength(symbols[0])),
+		// 	_ => unimplemented!()
+		// }
+	}
+
 
 
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
@@ -974,9 +1021,9 @@ impl<R: Read> Decompressor<R> {
 					};
 				},
 				State::ContextModesLiterals(context_modes) => {
-					self.meta_block.header.context_modes_literals = Some(context_modes);
+					self.meta_block.context_modes_literals = Some(context_modes);
 
-					println!("Context Modes Literals = {:?}", self.meta_block.header.context_modes_literals);
+					println!("Context Modes Literals = {:?}", self.meta_block.context_modes_literals);
 
 					self.state = match self.parse_n_trees_l() {
 						Ok(state) => state,
@@ -1181,7 +1228,7 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::DataMetaBlockBegin => {
 					self.state = match (self.meta_block.header.n_bltypes_i, self.meta_block.blen_i) {
-						(Some(0...1), _) => match self.parse_insert_and_copy_length() {
+						(Some(1), _) => match self.parse_insert_and_copy_length() {
 							Ok(state) => state,
 							Err(_) => return Err(DecompressorError::UnexpectedEOF),
 						},
@@ -1204,7 +1251,6 @@ impl<R: Read> Decompressor<R> {
 					};
 				},
 				State::InsertLengthAndCopyLength(insert_length_and_copy_length) => {
-
 					match insert_length_and_copy_length {
 						(in_len, co_len) => {
 							self.meta_block.insert_length = Some(in_len);
@@ -1214,7 +1260,37 @@ impl<R: Read> Decompressor<R> {
 
 					println!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length);
 
-					unimplemented!();
+					self.state = match (self.meta_block.header.n_bltypes_l, self.meta_block.blen_l) {
+						(Some(1), _) => match self.parse_insert_literals() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						},
+						(_, Some(0)) => unimplemented!(),
+						(Some(_), Some(_)) =>  match self.parse_insert_literals() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						},
+						_ => unreachable!(),
+					};
+				},
+				State::InsertLiterals(insert_literals) => {
+					for literal in insert_literals {
+						self.buf.push_front(literal);
+						self.p2 = self.p1;
+						self.p1 = literal;
+						self.output_window[self.count_output % self.header.window_size.unwrap() as usize] = literal;
+						self.count_output += 1;
+						self.meta_block.count_output += 1;
+					}
+
+					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
+						State::DataMetaBlockEnd
+					} else {
+						// @TODO handle copy length/distance here
+						unimplemented!();
+					};
+
+					return Ok(self.buf.len());
 				},
 				State::DataMetaBlockEnd => {
 					self.state = State::MetaBlockEnd;

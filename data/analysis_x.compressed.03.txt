@@ -60,7 +60,7 @@ Brotli Meta-Block Header
 
 0x00 = 0000 0000 [00]
 
-
+0000 00             # 1 distance symbol (alphabet size (16 + NDIRECT + (48 << NPOSTFIX)) == 64 => 6-bit)
 
 
 [0000 00]           # trailing bits
