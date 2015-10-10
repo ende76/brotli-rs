@@ -1,0 +1,39 @@
+Analysis of x.compressed.00:
+0x00 0x00 0x10 0x58 0x03
+
+Brotli Stream Header
+====================
+0x00 = 0000 0000
+
+0                   # WBITS => decodes to 16
+                    # window size = 1 << WBITS - 16 = 65520
+
+Brotli Meta-Block Header
+========================
+[0000 000]
+
+0                   # ISLAST => false => this is not the last meta Meta-Block
+00                  # MNIBBLES => 0 => MNIBBLES == 4
+
+0x10 0x00 = 0001 0000 0000 0000 [0000]
+
+0000 0000 0000 0000
+                    # MLEN - 1 == 0 => MLEN == 1
+
+[0001]
+
+1                   # ISUNCOMPRESSED => true
+
+000                 # ignore bits up to the next byte boundary
+
+0x58                # literal 'X'
+
+0x03 = 0000 0011
+
+1                   # ISLAST => true
+1                   # ISLASTEMPTY => true => brotli stream ends here
+
+[0000 00]           # trailing bits
+                    # MUST be zero
+
+End of Stream

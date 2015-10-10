@@ -1,0 +1,69 @@
+Analysis of x.compressed.03:
+0xa1, 0x00, 0x00, 0x00, 0x00, 0x81, 0x15, 0x08, 0x04, 0x00,
+
+Brotli Stream Header
+====================
+0xa1 = 1010 0001
+
+010 0001            # WBITS => decodes to 10
+                    # window size = 1 << WBITS - 16 = 1008
+
+Brotli Meta-Block Header
+========================
+0x00 = 0000 0000 [1]
+
+1                   # ISLAST => true => this is the last meta Meta-Block
+0                   # ISLASTEMPTY => false
+00                  # MNIBBLES => 0 => MNIBBLES == 4
+
+0x00 0x00 = 0000 0000 0000 0000 [0000 0]
+
+000 0000 0000 0000 0
+                    # MLEN - 1 == 0 => MLEN == 1
+
+[0000 0]
+
+0                   # NBLTYPESL => 1
+0                   # NBLTYPESI => 1
+0                   # NBLTYPESD => 1
+00                  # NPOSTFIX => 0
+
+0x00 = 0000 0000
+
+0000                # NDIRECT => 0
+00                  # Context mode for one literal block type => 0
+0                   # NTREESL => 1
+0                   # NTREESD => 1
+
+0x81 = 1000 0001
+
+01                  # value => 1 => simple prefix code
+00                  # NSYM - 1 == 0 => NSYM == 1
+
+0x15 = 0001 0101 [1000]
+
+0101 1000           # 1 literal symbol (alphabet size 256 => 8-bit) 0x58
+
+[0001]
+
+01                  # value => 1 => simple prefix code
+00                  # NSYM - 1 == 0 => NSYM == 1
+
+0x04 0x08 = 0000 0100 0000 1000
+
+00 0000 1000        # 1 insert and length symbol (alphabet size 704 => 10-bit) 0x0008
+
+[0000 01]
+
+01                  # value => 1 => simple prefix code
+00                  # NSYM - 1 == 0 => NSYM == 1
+
+0x00 = 0000 0000 [00]
+
+
+
+
+[0000 00]           # trailing bits
+                    # MUST be zero
+
+End of Stream
