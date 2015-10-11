@@ -1,3 +1,6 @@
+use ::bitreader::{ BitReader };
+use std::io::{ Read };
+
 /// For Huffman codes used in the Deflate spec, is seems that the length of a code is at most 9 bits.
 /// For this simple use case, we don't need/want to deal with type parameters.
 pub type Symbol = u16;
@@ -119,6 +122,20 @@ impl Tree {
 						None => None,
 					}
 				}
+		}
+	}
+
+	pub fn lookup_symbol<R: Read>(&self, r: &mut BitReader<R>) -> Option<Symbol> {
+		loop {
+			match r.read_bit() {
+				Ok(bit) =>
+					match self.lookup(bit) {
+						Some(Tree::Leaf(symbol)) => return Some(symbol),
+						Some(inner) => return inner.lookup_symbol(r),
+						None => unreachable!(),
+					},
+				Err(_) => return None,
+			}
 		}
 	}
 }

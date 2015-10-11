@@ -11,33 +11,6 @@ use std::io::Read;
 use std::result;
 
 
-/// Wraps an input stream and provides methods for decompressing.
-///
-/// # Examples
-///
-/// extern crate compression;
-///
-/// use compression::brotli::Decompressor;
-/// use std::fs::File;
-///
-/// let mut f = try!(File::open("compressed.txt.gz"));
-/// let mut brotli = Decompressor::new(f);
-pub struct Decompressor<R: Read> {
-	in_stream: BitReader<R>,
-	header: Header,
-	buf: VecDeque<u8>,
-	output_window: Vec<u8>,
-	state: State,
-	meta_block: MetaBlock,
-	count_output: usize,
-	/// most recent byte in output stream
-	/// used to determine context mode for literals
-	p1: u8,
-	/// second most recent byte in output stream
-	/// used to determine context mode for literals
-	p2: u8,
-}
-
 type WBits = u8;
 type CodeLengths = Vec<usize>;
 type HuffmanCodes = huffman::tree::Tree;
@@ -122,6 +95,8 @@ struct MetaBlock {
 	header: MetaBlockHeader,
 	count_output: usize,
 	context_modes_literals: Option<ContextModes>,
+	prefix_tree_literals: Option<HuffmanCodes>,
+	prefix_tree_insert_and_copy_lengths: Option<HuffmanCodes>,
 	btype_l: Option<NBltypes>,
 	blen_l: Option<BLen>,
 	btype_i: Option<NBltypes>,
@@ -145,6 +120,8 @@ impl MetaBlock {
 			btype_d: None,
 			blen_d: None,
 			context_modes_literals: None,
+			prefix_tree_literals: None,
+			prefix_tree_insert_and_copy_lengths: None,
 			insert_and_copy_length: None,
 			insert_length: None,
 			copy_length: None,
@@ -225,9 +202,11 @@ enum State {
 	PrefixCodeLiteralsKind(PrefixCodeKind),
 	NSymLiterals(NSym),
 	SymbolsLiterals(Symbols),
+	PrefixTreeLiterals(HuffmanCodes),
 	PrefixCodeInsertAndCopyLengthsKind(PrefixCodeKind),
 	NSymInsertAndCopyLengths(NSym),
 	SymbolsInsertAndCopyLengths(Symbols),
+	PrefixTreeInsertAndCopyLengths(HuffmanCodes),
 	PrefixCodeDistancesKind(PrefixCodeKind),
 	NSymDistances(NSym),
 	SymbolsDistances(Symbols),
@@ -249,6 +228,8 @@ enum DecompressorError {
 	NonZeroTrailerNibble,
 	ExpectedEndOfStream,
 	InvalidMSkipLen,
+	ParseErrorInsertAndCopyLength,
+	ParseErrorInsertLiterals,
 }
 
 impl Display for DecompressorError {
@@ -268,8 +249,37 @@ impl Error for DecompressorError {
 			&DecompressorError::NonZeroTrailerNibble => "Enocuntered non-zero nibble trailing",
 			&DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
 			&DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
+			&DecompressorError::ParseErrorInsertAndCopyLength => "Error parsing Insert And Copy Length",
+			&DecompressorError::ParseErrorInsertLiterals => "Error parsing Insert Literals",
 		}
 	}
+}
+
+/// Wraps an input stream and provides methods for decompressing.
+///
+/// # Examples
+///
+/// extern crate compression;
+///
+/// use compression::brotli::Decompressor;
+/// use std::fs::File;
+///
+/// let mut f = try!(File::open("compressed.txt.gz"));
+/// let mut brotli = Decompressor::new(f);
+pub struct Decompressor<R: Read> {
+	in_stream: BitReader<R>,
+	header: Header,
+	buf: VecDeque<u8>,
+	output_window: Vec<u8>,
+	state: State,
+	meta_block: MetaBlock,
+	count_output: usize,
+	/// most recent byte in output stream
+	/// used to determine context mode for literals
+	p1: u8,
+	/// second most recent byte in output stream
+	/// used to determine context mode for literals
+	p2: u8,
 }
 
 impl<R: Read> Decompressor<R> {
@@ -575,6 +585,34 @@ impl<R: Read> Decompressor<R> {
 		Ok(State::SymbolsLiterals(symbols))
 	}
 
+	fn create_prefix_tree_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let (code_lengths, symbols) = match self.meta_block.header.prefix_code_literals {
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(2),
+				symbols: Some(ref symbols),
+				tree_select: _,
+			})) => (vec![1, 1], symbols),
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(3),
+				symbols: Some(ref symbols),
+				tree_select: _,
+			})) => (vec![1, 2, 2], symbols),
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(4),
+				symbols: Some(ref symbols),
+				tree_select: Some(false),
+			})) => (vec![2, 2, 2, 2], symbols),
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(4),
+				symbols: Some(ref symbols),
+				tree_select: Some(true),
+			})) => (vec![1, 2, 3, 3], symbols),
+			_ => unreachable!(),
+		};
+
+		Ok(State::PrefixTreeLiterals(huffman::codes_from_lengths_and_symbols(code_lengths, symbols)))
+	}
+
 	fn parse_prefix_code_insert_and_copy_lengths(&mut self) -> result::Result<State, DecompressorError> {
 		match self.parse_prefix_code_kind() {
 			Ok(kind) => Ok(State::PrefixCodeInsertAndCopyLengthsKind(kind)),
@@ -606,6 +644,34 @@ impl<R: Read> Decompressor<R> {
 		}
 
 		Ok(State::SymbolsInsertAndCopyLengths(symbols))
+	}
+
+	fn create_prefix_tree_insert_and_copy_lengths(&mut self) -> result::Result<State, DecompressorError> {
+		let (code_lengths, symbols) = match self.meta_block.header.prefix_code_insert_and_copy_lengths {
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(2),
+				symbols: Some(ref symbols),
+				tree_select: _,
+			})) => (vec![1, 1], symbols),
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(3),
+				symbols: Some(ref symbols),
+				tree_select: _,
+			})) => (vec![1, 2, 2], symbols),
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(4),
+				symbols: Some(ref symbols),
+				tree_select: Some(false),
+			})) => (vec![2, 2, 2, 2], symbols),
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(4),
+				symbols: Some(ref symbols),
+				tree_select: Some(true),
+			})) => (vec![1, 2, 3, 3], symbols),
+			_ => unreachable!(),
+		};
+
+		Ok(State::PrefixTreeInsertAndCopyLengths(huffman::codes_from_lengths_and_symbols(code_lengths, symbols)))
 	}
 
 	fn parse_prefix_code_distances(&mut self) -> result::Result<State, DecompressorError> {
@@ -656,6 +722,16 @@ impl<R: Read> Decompressor<R> {
 				symbols: Some(ref symbols),
 				tree_select: _,
 			})) => Ok(State::InsertAndCopyLength(symbols[0])),
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(2...4),
+				symbols: _,
+				tree_select: _,
+			})) => {
+				match self.meta_block.prefix_tree_insert_and_copy_lengths.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+					Some(symbol) => Ok(State::InsertAndCopyLength(symbol)),
+					None => Err(DecompressorError::ParseErrorInsertAndCopyLength),
+				}
+			},
 			_ => unimplemented!()
 		}
 	}
@@ -745,20 +821,21 @@ impl<R: Read> Decompressor<R> {
 					symbols: Some(ref symbols),
 					tree_select: _,
 				})) => symbols[0] as Literal,
+				Some(PrefixCode::Simple(PrefixCodeSimple {
+					n_sym: Some(2...4),
+					symbols: _,
+					tree_select: _,
+				})) => {
+					match self.meta_block.prefix_tree_literals.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+						Some(symbol) => symbol as Literal,
+						None => return Err(DecompressorError::ParseErrorInsertLiterals),
+					}
+				},
 				_ => unimplemented!(),
 			}
 		}
 
 		Ok(State::InsertLiterals(literals))
-
-		// match self.meta_block.header.prefix_code_literals {
-		// 	Some(PrefixCode::Simple(PrefixCodeSimple {
-		// 		n_sym: Some(1),
-		// 		symbols: Some(ref symbols),
-		// 		tree_select: _,
-		// 	})) => Ok(State::InsertAndCopyLength(symbols[0])),
-		// 	_ => unimplemented!()
-		// }
 	}
 
 
@@ -1091,13 +1168,21 @@ impl<R: Read> Decompressor<R> {
 
 					self.state = match self.meta_block.header.prefix_code_literals.as_ref().unwrap() {
 						&PrefixCode::Simple(PrefixCodeSimple{
-								n_sym: Some(2...4),
+						// @Note In case n_sym 4, we need to parse the tree_select bit first,
+						//       and in all cases n_sym 4...2, we should create a lookup tree
+						//       from the implied code lengths
+								n_sym: Some(4),
 								symbols: _,
 								tree_select: _,
-						// @Note In case 4, we need to parse the tree_select bit first,
-						//       and in all cases 4...2, we should create a lookup tree
-						//       from the implied code lengths
 						}) => unimplemented!(),
+						&PrefixCode::Simple(PrefixCodeSimple{
+								n_sym: Some(2...3),
+								symbols: _,
+								tree_select: _,
+						}) =>  match self.create_prefix_tree_literals() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						},
 						&PrefixCode::Simple(PrefixCodeSimple{
 								n_sym: Some(1),
 								symbols: _,
@@ -1108,6 +1193,16 @@ impl<R: Read> Decompressor<R> {
 						},
 						_ => unreachable!(),
 					}
+				},
+				State::PrefixTreeLiterals(prefix_tree_literals) => {
+					self.meta_block.prefix_tree_literals = Some(prefix_tree_literals);
+
+					println!("Prefix tree literals = {:?}", self.meta_block.prefix_tree_literals);
+
+					self.state = match self.parse_prefix_code_insert_and_copy_lengths() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
 				},
 				State::PrefixCodeLiteralsKind(PrefixCodeKind::Complex) => {
 
@@ -1148,13 +1243,21 @@ impl<R: Read> Decompressor<R> {
 
 					self.state = match self.meta_block.header.prefix_code_insert_and_copy_lengths.as_ref().unwrap() {
 						&PrefixCode::Simple(PrefixCodeSimple{
-								n_sym: Some(2...4),
+						// @Note In case n_sym 4, we need to parse the tree_select bit first,
+						//       and in all cases n_sym 4...2, we should create a lookup tree
+						//       from the implied code lengths
+								n_sym: Some(4),
 								symbols: _,
 								tree_select: _,
-						// @Note In case 4, we need to parse the tree_select bit first,
-						//       and in all cases 4...2, we should create a lookup tree
-						//       from the implied code lengths
 						}) => unimplemented!(),
+						&PrefixCode::Simple(PrefixCodeSimple{
+								n_sym: Some(2...3),
+								symbols: _,
+								tree_select: _,
+						}) =>  match self.create_prefix_tree_insert_and_copy_lengths() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						},
 						&PrefixCode::Simple(PrefixCodeSimple{
 								n_sym: Some(1),
 								symbols: _,
@@ -1165,6 +1268,16 @@ impl<R: Read> Decompressor<R> {
 						},
 						_ => unreachable!(),
 					}
+				},
+				State::PrefixTreeInsertAndCopyLengths(prefix_tree_insert_and_copy_lengths) => {
+					self.meta_block.prefix_tree_insert_and_copy_lengths = Some(prefix_tree_insert_and_copy_lengths);
+
+					println!("Prefix tree insert and copy lengths = {:?}", self.meta_block.prefix_tree_insert_and_copy_lengths);
+
+					self.state = match self.parse_prefix_code_distances() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
 				},
 				State::PrefixCodeInsertAndCopyLengthsKind(PrefixCodeKind::Complex) => {
 
@@ -1282,6 +1395,8 @@ impl<R: Read> Decompressor<R> {
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
 					}
+
+					println!("output = {:?}", self.buf);
 
 					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
 						State::DataMetaBlockEnd
