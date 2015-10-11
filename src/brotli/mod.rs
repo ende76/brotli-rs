@@ -41,6 +41,7 @@ type InsertAndCopyLength = Symbol;
 type InsertLength = u32;
 type CopyLength = u32;
 type InsertLengthAndCopyLength = (InsertLength, CopyLength);
+type Distance = u32;
 
 #[derive(Debug, Clone, PartialEq)]
 enum PrefixCodeKind {
@@ -106,6 +107,8 @@ struct MetaBlock {
 	insert_and_copy_length: Option<Symbol>,
 	insert_length: Option<InsertLength>,
 	copy_length: Option<CopyLength>,
+	distance: Option<Distance>,
+	distance_buf: Vec<Distance>,
 }
 
 impl MetaBlock {
@@ -125,6 +128,8 @@ impl MetaBlock {
 			insert_and_copy_length: None,
 			insert_length: None,
 			copy_length: None,
+			distance: None,
+			distance_buf: vec![4, 11, 15, 16],
 		}
 	}
 }
@@ -1355,6 +1360,11 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::InsertAndCopyLength(insert_and_copy_length) => {
 					self.meta_block.insert_and_copy_length = Some(insert_and_copy_length);
+
+					self.meta_block.distance = match insert_and_copy_length {
+						0...127 => Some(0),
+						_ => None,
+					};
 
 					println!("Insert And Copy Length = {:?}", insert_and_copy_length);
 
