@@ -31,6 +31,7 @@ type NPostfix = u8;
 type NDirect = u8;
 type ContextMode = u8;
 type ContextModes = Vec<ContextMode>;
+type ContextMap = Vec<ContextMode>;
 type NTreesL = u8;
 type NTreesD = u8;
 type NSym = u8;
@@ -151,6 +152,7 @@ struct MetaBlockHeader {
 	n_direct: Option<NDirect>,
 	n_trees_l: Option<NTreesL>,
 	n_trees_d: Option<NTreesD>,
+	c_map_d: Option<ContextMap>,
 	prefix_code_literals: Option<PrefixCode>,
 	prefix_code_insert_and_copy_lengths: Option<PrefixCode>,
 	prefix_code_distances: Option<PrefixCode>,
@@ -173,6 +175,7 @@ impl MetaBlockHeader {
 			n_direct: None,
 			n_trees_l: None,
 			n_trees_d: None,
+			c_map_d: None,
 			prefix_code_literals: None,
 			prefix_code_insert_and_copy_lengths: None,
 			prefix_code_distances: None,
@@ -561,6 +564,76 @@ impl<R: Read> Decompressor<R> {
 			Err(e) => Err(e)
 		}
 	}
+
+	fn parse_context_map_distances(&mut self) -> result::Result<State, DecompressorError> {
+		let rlemax = match self.in_stream.read_bit() {
+			Ok(false) => 0,
+			Ok(true) => match self.in_stream.read_u8_from_n_bits(4) {
+				Ok(my_u8) => my_u8 + 1,
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			},
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
+		};
+
+		println!("RLEMAX = {:?}", rlemax);
+
+		let alphabet_size = (rlemax + self.meta_block.header.n_trees_d.unwrap()) as usize;
+
+		println!("Alphabet Size = {:?}", alphabet_size);
+
+		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
+
+		println!("Bit Width = {:?}", bit_width);
+
+		let prefix_code_kind = match self.parse_prefix_code_kind() {
+			Ok(kind) => kind,
+			Err(e) => return Err(e),
+		};
+
+		if prefix_code_kind == PrefixCodeKind::Complex {
+			unimplemented!();
+		}
+
+		println!("Prefix Code Kind = {:?}", prefix_code_kind);
+
+		let n_sym = match self.in_stream.read_u8_from_n_bits(2) {
+			Ok(my_u8) => (my_u8 + 1) as usize,
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
+		};
+
+		println!("NSYM = {:?}", n_sym);
+
+		let tree_select = match n_sym {
+			4 => match self.in_stream.read_bit() {
+				Ok(v) => Some(v),
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			},
+			_ => None,
+		};
+
+		let mut symbols = vec![0; n_sym];
+		for i in 0..n_sym {
+			symbols[i] = match self.in_stream.read_u16_from_n_bits(bit_width) {
+				Ok(my_u8) => my_u8 as Symbol,
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			}
+		}
+
+		println!("Symbols = {:?}", symbols);
+
+		let code_lengths = match (n_sym, tree_select) {
+			(2, None) => vec![1, 1],
+			(3, None) => vec![1, 2, 2],
+			(4, Some(false)) => vec![2, 2, 2, 2],
+			(4, Some(true)) => vec![1, 2, 3, 3],
+			_ => unreachable!(),
+		};
+
+		println!("Code Lengths = {:?}", code_lengths);
+
+		unimplemented!();
+	}
+
 
 	fn parse_prefix_code_kind(&mut self) -> result::Result<PrefixCodeKind, DecompressorError> {
 		match self.in_stream.read_u8_from_n_bits(2) {
@@ -1260,11 +1333,15 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::NTreesD(n_trees_d) => {
 					self.meta_block.header.n_trees_d = Some(n_trees_d);
+					self.meta_block.header.c_map_d = Some(vec![0; self.meta_block.header.n_bltypes_d.unwrap() as usize]);
 
 					println!("NTREESD = {:?}", n_trees_d);
 
 					self.state = if n_trees_d >= 2 {
-						unimplemented!();
+						match self.parse_context_map_distances() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						}
 					} else {
 						match self.parse_prefix_code_literals_kind() {
 							Ok(state) => state,
