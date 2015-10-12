@@ -41,6 +41,7 @@ type InsertAndCopyLength = Symbol;
 type InsertLength = u32;
 type CopyLength = u32;
 type InsertLengthAndCopyLength = (InsertLength, CopyLength);
+type DistanceCode = u32;
 type Distance = u32;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -107,8 +108,8 @@ struct MetaBlock {
 	insert_and_copy_length: Option<Symbol>,
 	insert_length: Option<InsertLength>,
 	copy_length: Option<CopyLength>,
+	distance_code: Option<DistanceCode>,
 	distance: Option<Distance>,
-	distance_buf: Vec<Distance>,
 }
 
 impl MetaBlock {
@@ -128,8 +129,8 @@ impl MetaBlock {
 			insert_and_copy_length: None,
 			insert_length: None,
 			copy_length: None,
+			distance_code: None,
 			distance: None,
-			distance_buf: vec![4, 11, 15, 16],
 		}
 	}
 }
@@ -219,6 +220,9 @@ enum State {
 	InsertAndCopyLength(InsertAndCopyLength),
 	InsertLengthAndCopyLength(InsertLengthAndCopyLength),
 	InsertLiterals(Literals),
+	DistanceCode(DistanceCode),
+	Distance(Distance),
+	CopyLiterals(Literals),
 	DataMetaBlockEnd,
 	MetaBlockEnd,
 	StreamEnd,
@@ -235,6 +239,7 @@ enum DecompressorError {
 	InvalidMSkipLen,
 	ParseErrorInsertAndCopyLength,
 	ParseErrorInsertLiterals,
+	ExceededExpectedBytes,
 }
 
 impl Display for DecompressorError {
@@ -256,6 +261,7 @@ impl Error for DecompressorError {
 			&DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
 			&DecompressorError::ParseErrorInsertAndCopyLength => "Error parsing Insert And Copy Length",
 			&DecompressorError::ParseErrorInsertLiterals => "Error parsing Insert Literals",
+			&DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
 		}
 	}
 }
@@ -285,6 +291,11 @@ pub struct Decompressor<R: Read> {
 	/// second most recent byte in output stream
 	/// used to determine context mode for literals
 	p2: u8,
+	/// ring buffer for last 4 distances, gets set
+	/// at the beginning of the stream, and then
+	/// lives until the end
+	distance_buf: Vec<Distance>,
+	distance_buf_pos: usize,
 }
 
 impl<R: Read> Decompressor<R> {
@@ -299,6 +310,8 @@ impl<R: Read> Decompressor<R> {
 			count_output: 0,
 			p1: 0,
 			p2: 0,
+			distance_buf: vec![4, 11, 15, 16],
+			distance_buf_pos: 0,
 		}
 	}
 
@@ -843,6 +856,125 @@ impl<R: Read> Decompressor<R> {
 		Ok(State::InsertLiterals(literals))
 	}
 
+	fn parse_distance_code(&mut self) -> result::Result<State, DecompressorError> {
+		// check for implicit distance 0 ([…]"as indicated by the insert-and-copy length code")
+		match self.meta_block.distance {
+			Some(0) => return Ok(State::DistanceCode(0)),
+			Some(_) => unreachable!(),
+			None => {}
+		};
+
+		match self.meta_block.blen_d {
+			None => {},
+			Some(0) => unimplemented!(),
+			Some(ref mut blen_d) => *blen_d -= 1,
+		}
+
+		let distance_code = match self.meta_block.header.prefix_code_distances {
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(1),
+				symbols: Some(ref symbols),
+				tree_select: _,
+			})) => symbols[0] as DistanceCode,
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(2...4),
+				symbols: _,
+				tree_select: _,
+			})) => {
+				unimplemented!();
+				// @NOTE Need to create prefix tree for distances first
+				// match self.meta_block.prefix_tree_distances.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+				// 	Some(symbol) => symbol as DistanceCode,
+				// 	None => return Err(DecompressorError::ParseErrorInsertLiterals),
+				// }
+			},
+			_ => unimplemented!(),
+		};
+
+		Ok(State::DistanceCode(distance_code))
+	}
+
+	fn decode_distance(&mut self) -> result::Result<State, DecompressorError> {
+		let distance = match self.meta_block.distance_code {
+			Some(0) => {
+				self.distance_buf[self.distance_buf_pos]
+			},
+			// reference distance_buf here, to get the decoded distance
+			Some(1...15) => unimplemented!(),
+			Some(dcode) if dcode <= (15 + self.meta_block.header.n_direct.unwrap() as DistanceCode) => dcode - 15,
+			// use NDIRECT and NPOSTFIX calculations, as described in the RFC, section 4.
+			// to calculate the decoded distance
+			Some(dcode) => {
+				let (n_direct, n_postfix) = (self.meta_block.header.n_direct.unwrap() as DistanceCode, self.meta_block.header.n_postfix.unwrap());
+				let ndistbits = 1 + ((dcode - (n_direct) - 16) >> (n_postfix + 1));
+
+				println!("NDISTBITS = {:?}", ndistbits);
+
+				let dextra = match self.in_stream.read_bit() {
+					Ok(true) => 1,
+					Ok(false) => 0,
+					Err(_) => return Err(DecompressorError::UnexpectedEOF),
+				};
+
+				println!("DEXTRA = {:?}", dextra);
+
+				let hcode = (dcode - n_direct - 16) >> n_postfix;
+
+				println!("HCODE = {:?}", hcode);
+
+				let postfix_mask = (1 << n_postfix) - 1;
+				let lcode = (dcode - n_direct - 16) & postfix_mask;
+
+				println!("LCODE = {:?}", lcode);
+
+				let offset = ((2 + (hcode & 1)) << ndistbits) - 4;
+
+				println!("Offset = {:?}", offset);
+
+				let distance = ((offset + dextra) << n_postfix) + lcode + n_direct + 1;
+
+				println!("Distance = {:?}", distance);
+
+				distance
+			},
+			None => unreachable!()
+		};
+
+		if self.meta_block.distance_code.unwrap() > 0 {
+			self.distance_buf_pos = (self.distance_buf_pos + 3) % 4;
+			self.distance_buf[self.distance_buf_pos] = distance;
+		}
+
+		Ok(State::Distance(distance))
+	}
+
+	fn copy_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let window_size = self.header.window_size.unwrap();
+		let copy_length = self.meta_block.copy_length.unwrap() as usize;
+		let count_output = self.count_output;
+		let distance = self.meta_block.distance.unwrap() as usize;
+		let ref output_window = self.output_window;
+
+		let mut window = vec![0; copy_length];
+		let l = if copy_length > distance {
+			distance
+		} else {
+			copy_length
+		};
+
+		for i in (count_output + window_size - distance)..(count_output + window_size - distance + l) {
+
+			window[i - (count_output + window_size - distance)] = output_window[i % window_size];
+		}
+
+		for i in l..copy_length {
+			window[i] = window[i % l];
+		}
+
+		println!("window = {:?}", window);
+
+		Ok(State::CopyLiterals(window))
+	}
 
 
 	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
@@ -1377,17 +1509,19 @@ impl<R: Read> Decompressor<R> {
 					match insert_length_and_copy_length {
 						(in_len, co_len) => {
 							self.meta_block.insert_length = Some(in_len);
-							self.meta_block.copy_length =  Some(co_len);
+							self.meta_block.copy_length = Some(co_len);
 						},
 					};
 
 					println!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length);
 
 					self.state = match (self.meta_block.header.n_bltypes_l, self.meta_block.blen_l) {
+						(Some(0), _) => unreachable!(),
 						(Some(1), _) => match self.parse_insert_literals() {
 							Ok(state) => state,
 							Err(_) => return Err(DecompressorError::UnexpectedEOF),
 						},
+						// should parse block type code for literals here
 						(_, Some(0)) => unimplemented!(),
 						(Some(_), Some(_)) =>  match self.parse_insert_literals() {
 							Ok(state) => state,
@@ -1411,11 +1545,74 @@ impl<R: Read> Decompressor<R> {
 					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
 						State::DataMetaBlockEnd
 					} else {
-						// @TODO handle copy length/distance here
-						unimplemented!();
+						match (self.meta_block.header.n_bltypes_d, self.meta_block.blen_d) {
+							(Some(0), _) => unreachable!(),
+							(Some(1), _) => match self.parse_distance_code() {
+								Ok(state) => state,
+								Err(_) => return Err(DecompressorError::UnexpectedEOF),
+							},
+							// should parse block type code for distances here
+							(_, Some(0)) => unimplemented!(),
+							(Some(_), Some(_)) =>  match self.parse_distance_code() {
+								Ok(state) => state,
+								Err(_) => return Err(DecompressorError::UnexpectedEOF),
+							},
+							_ => unreachable!(),
+						}
 					};
 
 					return Ok(self.buf.len());
+				},
+				State::DistanceCode(distance_code) => {
+					self.meta_block.distance_code = Some(distance_code);
+
+					println!("Distance Code = {:?}", distance_code);
+
+					self.state = match self.decode_distance() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+				},
+				State::Distance(distance) => {
+					self.meta_block.distance = Some(distance);
+
+					println!("Distance = {:?}", distance);
+
+					if (distance as usize) > self.header.window_size.unwrap() || (distance as usize) > self.count_output {
+						// need to read from static dictionary
+						// and do transformations
+						unimplemented!();
+					}
+
+					self.state = match self.copy_literals() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+				},
+				State::CopyLiterals(copy_literals) => {
+					for literal in copy_literals {
+						self.buf.push_front(literal);
+						self.p2 = self.p1;
+						self.p1 = literal;
+						self.output_window[self.count_output % self.header.window_size.unwrap() as usize] = literal;
+						self.count_output += 1;
+						self.meta_block.count_output += 1;
+					}
+
+					println!("output = {:?}", self.buf);
+
+					if (self.meta_block.header.m_len.unwrap() as usize) < self.meta_block.count_output {
+						return Err(DecompressorError::ExceededExpectedBytes);
+					}
+
+					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
+						State::DataMetaBlockEnd
+					} else {
+						State::DataMetaBlockBegin
+					};
+
+					return Ok(self.buf.len());
+
 				},
 				State::DataMetaBlockEnd => {
 					self.state = State::MetaBlockEnd;
