@@ -209,10 +209,7 @@ enum State {
 	NTreesL(NTreesL),
 	NTreesD(NTreesD),
 	PrefixCodeLiterals((PrefixCode, HuffmanCodes)),
-	PrefixCodeInsertAndCopyLengthsKind(PrefixCodeKind),
-	NSymInsertAndCopyLengths(NSym),
-	SymbolsInsertAndCopyLengths(Symbols),
-	PrefixTreeInsertAndCopyLengths(HuffmanCodes),
+	PrefixCodeInsertAndCopyLengths((PrefixCode, HuffmanCodes)),
 	PrefixCodeDistancesKind(PrefixCodeKind),
 	NSymDistances(NSym),
 	SymbolsDistances(Symbols),
@@ -631,6 +628,15 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
+	fn parse_prefix_code_insert_and_copy_lengths(&mut self) -> result::Result<State, DecompressorError> {
+		let alphabet_size = 704;
+
+		match self.parse_prefix_code(alphabet_size) {
+			Ok(prefix_code) => Ok(State::PrefixCodeInsertAndCopyLengths(prefix_code)),
+			Err(e) => Err(e),
+		}
+	}
+
 	fn parse_context_map_distances(&mut self) -> result::Result<State, DecompressorError> {
 		let rlemax = match self.in_stream.read_bit() {
 			Ok(false) => 0,
@@ -651,74 +657,12 @@ impl<R: Read> Decompressor<R> {
 		unimplemented!();
 	}
 
-
 	fn parse_prefix_code_kind(&mut self) -> result::Result<PrefixCodeKind, DecompressorError> {
 		match self.in_stream.read_u8_from_n_bits(2) {
 			Ok(1) => Ok(PrefixCodeKind::Simple),
 			Ok(_) => Ok(PrefixCodeKind::Complex),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
-	}
-
-	fn parse_prefix_code_insert_and_copy_lengths(&mut self) -> result::Result<State, DecompressorError> {
-		match self.parse_prefix_code_kind() {
-			Ok(kind) => Ok(State::PrefixCodeInsertAndCopyLengthsKind(kind)),
-			Err(e) => Err(e)
-		}
-	}
-
-	fn parse_n_sym_insert_and_copy_lengths(&mut self) -> result::Result<State, DecompressorError> {
-		match self.in_stream.read_u8_from_n_bits(2) {
-			Ok(my_u8) => Ok(State::NSymInsertAndCopyLengths(my_u8 + 1)),
-			Err(_) => Err(DecompressorError::UnexpectedEOF),
-		}
-	}
-
-	fn parse_symbols_insert_and_copy_lengths(&mut self) -> result::Result<State, DecompressorError> {
-		let n_sym = match self.meta_block.header.prefix_code_insert_and_copy_lengths.as_ref().unwrap() {
-			&PrefixCode::Simple(ref code) => code.n_sym.unwrap(),
-			_ => unreachable!(),
-		} as usize;
-
-		println!("NSYM = {:?}", n_sym);
-
-		let mut symbols = vec![0; n_sym];
-		for i in 0..n_sym {
-			symbols[i] = match self.in_stream.read_u16_from_n_bits(10) {
-				Ok(my_u16) => my_u16 as Symbol,
-				Err(_) => return Err(DecompressorError::UnexpectedEOF),
-			}
-		}
-
-		Ok(State::SymbolsInsertAndCopyLengths(symbols))
-	}
-
-	fn create_prefix_tree_insert_and_copy_lengths(&mut self) -> result::Result<State, DecompressorError> {
-		let (code_lengths, symbols) = match self.meta_block.header.prefix_code_insert_and_copy_lengths {
-			Some(PrefixCode::Simple(PrefixCodeSimple {
-				n_sym: Some(2),
-				symbols: Some(ref symbols),
-				tree_select: _,
-			})) => (vec![1, 1], symbols),
-			Some(PrefixCode::Simple(PrefixCodeSimple {
-				n_sym: Some(3),
-				symbols: Some(ref symbols),
-				tree_select: _,
-			})) => (vec![1, 2, 2], symbols),
-			Some(PrefixCode::Simple(PrefixCodeSimple {
-				n_sym: Some(4),
-				symbols: Some(ref symbols),
-				tree_select: Some(false),
-			})) => (vec![2, 2, 2, 2], symbols),
-			Some(PrefixCode::Simple(PrefixCodeSimple {
-				n_sym: Some(4),
-				symbols: Some(ref symbols),
-				tree_select: Some(true),
-			})) => (vec![1, 2, 3, 3], symbols),
-			_ => unreachable!(),
-		};
-
-		Ok(State::PrefixTreeInsertAndCopyLengths(huffman::codes_from_lengths_and_symbols(code_lengths, symbols)))
 	}
 
 	fn parse_prefix_code_distances(&mut self) -> result::Result<State, DecompressorError> {
@@ -1306,9 +1250,9 @@ impl<R: Read> Decompressor<R> {
 						}
 					};
 				},
-				State::PrefixCodeLiterals((prefix_code_literals, prefix_tree_literals)) => {
-					self.meta_block.header.prefix_code_literals = Some(prefix_code_literals);
-					self.meta_block.prefix_tree_literals = Some(prefix_tree_literals);
+				State::PrefixCodeLiterals((prefix_code, prefix_tree)) => {
+					self.meta_block.header.prefix_code_literals = Some(prefix_code);
+					self.meta_block.prefix_tree_literals = Some(prefix_tree);
 
 					println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_code_literals);
 					println!("Prefix tree literals = {:?}", self.meta_block.prefix_tree_literals);
@@ -1318,80 +1262,17 @@ impl<R: Read> Decompressor<R> {
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 				},
-				State::PrefixCodeInsertAndCopyLengthsKind(PrefixCodeKind::Simple) => {
-					self.meta_block.header.prefix_code_insert_and_copy_lengths = Some(PrefixCode::new_simple());
+				State::PrefixCodeInsertAndCopyLengths((prefix_code, prefix_tree)) => {
+					self.meta_block.header.prefix_code_insert_and_copy_lengths = Some(prefix_code);
+					self.meta_block.prefix_tree_insert_and_copy_lengths = Some(prefix_tree);
 
-					println!("Prefix Code Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
-
-					self.state = match self.parse_n_sym_insert_and_copy_lengths() {
-						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
-					};
-				},
-				State::NSymInsertAndCopyLengths(n_sym) => {
-					match self.meta_block.header.prefix_code_insert_and_copy_lengths.as_mut().unwrap() {
-						&mut PrefixCode::Simple(ref mut code) => code.n_sym = Some(n_sym),
-						_ => unreachable!(),
-					};
-
-					println!("Prefix Code Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
-
-					self.state = match self.parse_symbols_insert_and_copy_lengths() {
-						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
-					}
-				},
-				State::SymbolsInsertAndCopyLengths(symbols) => {
-					match self.meta_block.header.prefix_code_insert_and_copy_lengths.as_mut().unwrap() {
-						&mut PrefixCode::Simple(ref mut code) => code.symbols = Some(symbols),
-						_ => unreachable!(),
-					};
-
-					println!("Prefix Code Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
-
-					self.state = match self.meta_block.header.prefix_code_insert_and_copy_lengths.as_ref().unwrap() {
-						&PrefixCode::Simple(PrefixCodeSimple{
-						// @Note In case n_sym 4, we need to parse the tree_select bit first,
-						//       and in all cases n_sym 4...2, we should create a lookup tree
-						//       from the implied code lengths
-								n_sym: Some(4),
-								symbols: _,
-								tree_select: _,
-						}) => unimplemented!(),
-						&PrefixCode::Simple(PrefixCodeSimple{
-								n_sym: Some(2...3),
-								symbols: _,
-								tree_select: _,
-						}) =>  match self.create_prefix_tree_insert_and_copy_lengths() {
-							Ok(state) => state,
-							Err(_) => return Err(DecompressorError::UnexpectedEOF),
-						},
-						&PrefixCode::Simple(PrefixCodeSimple{
-								n_sym: Some(1),
-								symbols: _,
-								tree_select: _,
-						}) => match self.parse_prefix_code_distances() {
-							Ok(state) => state,
-							Err(_) => return Err(DecompressorError::UnexpectedEOF),
-						},
-						_ => unreachable!(),
-					}
-				},
-				State::PrefixTreeInsertAndCopyLengths(prefix_tree_insert_and_copy_lengths) => {
-					self.meta_block.prefix_tree_insert_and_copy_lengths = Some(prefix_tree_insert_and_copy_lengths);
-
-					println!("Prefix tree insert and copy lengths = {:?}", self.meta_block.prefix_tree_insert_and_copy_lengths);
+					println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
+					println!("Prefix tree literals = {:?}", self.meta_block.prefix_tree_insert_and_copy_lengths);
 
 					self.state = match self.parse_prefix_code_distances() {
 						Ok(state) => state,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
-				},
-				State::PrefixCodeInsertAndCopyLengthsKind(PrefixCodeKind::Complex) => {
-
-					println!("Prefix Codes Kind Insert And Copy Lengths = {:?}", PrefixCodeKind::Complex);
-
-					unimplemented!();
 				},
 				State::PrefixCodeDistancesKind(PrefixCodeKind::Simple) => {
 					self.meta_block.header.prefix_code_distances = Some(PrefixCode::new_simple());
