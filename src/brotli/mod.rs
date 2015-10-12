@@ -100,6 +100,7 @@ struct MetaBlock {
 	context_modes_literals: Option<ContextModes>,
 	prefix_tree_literals: Option<HuffmanCodes>,
 	prefix_tree_insert_and_copy_lengths: Option<HuffmanCodes>,
+	prefix_tree_distances: Option<HuffmanCodes>,
 	btype_l: Option<NBltypes>,
 	blen_l: Option<BLen>,
 	btype_i: Option<NBltypes>,
@@ -127,6 +128,7 @@ impl MetaBlock {
 			context_modes_literals: None,
 			prefix_tree_literals: None,
 			prefix_tree_insert_and_copy_lengths: None,
+			prefix_tree_distances: None,
 			insert_and_copy_length: None,
 			insert_length: None,
 			copy_length: None,
@@ -210,9 +212,7 @@ enum State {
 	NTreesD(NTreesD),
 	PrefixCodeLiterals((PrefixCode, HuffmanCodes)),
 	PrefixCodeInsertAndCopyLengths((PrefixCode, HuffmanCodes)),
-	PrefixCodeDistancesKind(PrefixCodeKind),
-	NSymDistances(NSym),
-	SymbolsDistances(Symbols),
+	PrefixCodeDistances((PrefixCode, HuffmanCodes)),
 	DataMetaBlockBegin,
 	InsertAndCopyLength(InsertAndCopyLength),
 	InsertLengthAndCopyLength(InsertLengthAndCopyLength),
@@ -559,6 +559,14 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
+	fn parse_prefix_code_kind(&mut self) -> result::Result<PrefixCodeKind, DecompressorError> {
+		match self.in_stream.read_u8_from_n_bits(2) {
+			Ok(1) => Ok(PrefixCodeKind::Simple),
+			Ok(_) => Ok(PrefixCodeKind::Complex),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
+
 	fn parse_prefix_code(&mut self, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
 		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
 
@@ -637,6 +645,15 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
+	fn parse_prefix_code_distances(&mut self) -> result::Result<State, DecompressorError> {
+		let alphabet_size = 16 + self.meta_block.header.n_direct.unwrap() as usize + 48 << self.meta_block.header.n_postfix.unwrap() as usize;
+
+		match self.parse_prefix_code(alphabet_size) {
+			Ok(prefix_code) => Ok(State::PrefixCodeDistances(prefix_code)),
+			Err(e) => Err(e),
+		}
+	}
+
 	fn parse_context_map_distances(&mut self) -> result::Result<State, DecompressorError> {
 		let rlemax = match self.in_stream.read_bit() {
 			Ok(false) => 0,
@@ -655,55 +672,6 @@ impl<R: Read> Decompressor<R> {
 
 
 		unimplemented!();
-	}
-
-	fn parse_prefix_code_kind(&mut self) -> result::Result<PrefixCodeKind, DecompressorError> {
-		match self.in_stream.read_u8_from_n_bits(2) {
-			Ok(1) => Ok(PrefixCodeKind::Simple),
-			Ok(_) => Ok(PrefixCodeKind::Complex),
-			Err(_) => Err(DecompressorError::UnexpectedEOF),
-		}
-	}
-
-	fn parse_prefix_code_distances(&mut self) -> result::Result<State, DecompressorError> {
-		match self.parse_prefix_code_kind() {
-			Ok(kind) => Ok(State::PrefixCodeDistancesKind(kind)),
-			Err(e) => Err(e)
-		}
-	}
-
-	fn parse_n_sym_distances(&mut self) -> result::Result<State, DecompressorError> {
-		match self.in_stream.read_u8_from_n_bits(2) {
-			Ok(my_u8) => Ok(State::NSymDistances(my_u8 + 1)),
-			Err(_) => Err(DecompressorError::UnexpectedEOF),
-		}
-	}
-
-	fn parse_symbols_distances(&mut self) -> result::Result<State, DecompressorError> {
-		let n_sym = match self.meta_block.header.prefix_code_distances.as_ref().unwrap() {
-			&PrefixCode::Simple(ref code) => code.n_sym.unwrap(),
-			_ => unreachable!(),
-		} as usize;
-
-		println!("NSYM = {:?}", n_sym);
-
-		let mut symbols = vec![0; n_sym];
-		let size = match 16 + self.meta_block.header.n_direct.unwrap() as usize + 48 << self.meta_block.header.n_postfix.unwrap() as usize {
-			64 => 6usize,
-			65...128 => 7usize,
-			129...256 => 8usize,
-			257...520 => 9usize,
-			_ => unreachable!(),
-		};
-
-		for i in 0..n_sym {
-			symbols[i] = match self.in_stream.read_u16_from_n_bits(size) {
-				Ok(my_u16) => my_u16 as Symbol,
-				Err(_) => return Err(DecompressorError::UnexpectedEOF),
-			}
-		}
-
-		Ok(State::SymbolsDistances(symbols))
 	}
 
 	fn parse_insert_and_copy_length(&mut self) -> result::Result<State, DecompressorError> {
@@ -1244,7 +1212,6 @@ impl<R: Read> Decompressor<R> {
 						}
 					} else {
 						match self.parse_prefix_code_literals() {
-						// match self.parse_prefix_code_literals_kind() {
 							Ok(state) => state,
 							Err(_) => return Err(DecompressorError::UnexpectedEOF),
 						}
@@ -1255,7 +1222,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.prefix_tree_literals = Some(prefix_tree);
 
 					println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_code_literals);
-					println!("Prefix tree literals = {:?}", self.meta_block.prefix_tree_literals);
+					println!("Prefix Tree literals = {:?}", self.meta_block.prefix_tree_literals);
 
 					self.state = match self.parse_prefix_code_insert_and_copy_lengths() {
 						Ok(state) => state,
@@ -1266,67 +1233,22 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_code_insert_and_copy_lengths = Some(prefix_code);
 					self.meta_block.prefix_tree_insert_and_copy_lengths = Some(prefix_tree);
 
-					println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
-					println!("Prefix tree literals = {:?}", self.meta_block.prefix_tree_insert_and_copy_lengths);
+					println!("Prefix Code Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
+					println!("Prefix Tree Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_insert_and_copy_lengths);
 
 					self.state = match self.parse_prefix_code_distances() {
 						Ok(state) => state,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 				},
-				State::PrefixCodeDistancesKind(PrefixCodeKind::Simple) => {
-					self.meta_block.header.prefix_code_distances = Some(PrefixCode::new_simple());
+				State::PrefixCodeDistances((prefix_code, prefix_tree)) => {
+					self.meta_block.header.prefix_code_distances = Some(prefix_code);
+					self.meta_block.prefix_tree_distances = Some(prefix_tree);
 
 					println!("Prefix Code Distances = {:?}", self.meta_block.header.prefix_code_distances);
+					println!("Prefix Tree Distances = {:?}", self.meta_block.prefix_tree_distances);
 
-					self.state = match self.parse_n_sym_distances() {
-						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
-					};
-				},
-				State::NSymDistances(n_sym) => {
-					match self.meta_block.header.prefix_code_distances.as_mut().unwrap() {
-						&mut PrefixCode::Simple(ref mut code) => code.n_sym = Some(n_sym),
-						_ => unreachable!(),
-					};
-
-					println!("Prefix Code Distances = {:?}", self.meta_block.header.prefix_code_distances);
-
-					self.state = match self.parse_symbols_distances() {
-						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
-					};
-				},
-				State::SymbolsDistances(symbols) => {
-					match self.meta_block.header.prefix_code_distances.as_mut().unwrap() {
-						&mut PrefixCode::Simple(ref mut code) => code.symbols = Some(symbols),
-						_ => unreachable!(),
-					};
-
-					println!("Prefix Code Distances = {:?}", self.meta_block.header.prefix_code_distances);
-
-					self.state = match self.meta_block.header.prefix_code_distances.as_ref().unwrap() {
-						&PrefixCode::Simple(PrefixCodeSimple{
-								n_sym: Some(2...4),
-								symbols: _,
-								tree_select: _,
-						// @Note In case 4, we need to parse the tree_select bit first,
-						//       and in all cases 4...2, we should create a lookup tree
-						//       from the implied code lengths
-						}) => unimplemented!(),
-						&PrefixCode::Simple(PrefixCodeSimple{
-								n_sym: Some(1),
-								symbols: _,
-								tree_select: _,
-						}) => State::DataMetaBlockBegin,
-						_ => unreachable!(),
-					};
-				},
-				State::PrefixCodeDistancesKind(PrefixCodeKind::Complex) => {
-
-					println!("Prefix Codes Kind Distances = {:?}", PrefixCodeKind::Complex);
-
-					unimplemented!();
+					self.state = State::DataMetaBlockBegin;
 				},
 				State::DataMetaBlockBegin => {
 					self.state = match (self.meta_block.header.n_bltypes_i, self.meta_block.blen_i) {
