@@ -29,9 +29,9 @@ type NBltypes = u8;
 type BLen = u32;
 type NPostfix = u8;
 type NDirect = u8;
-type ContextMode = u8;
+type ContextMode = u16;
 type ContextModes = Vec<ContextMode>;
-type ContextMap = Vec<ContextMode>;
+type ContextMap = Vec<u8>;
 type NTreesL = u8;
 type NTreesD = u8;
 type NSym = u8;
@@ -44,11 +44,12 @@ type CopyLength = u32;
 type InsertLengthAndCopyLength = (InsertLength, CopyLength);
 type DistanceCode = u32;
 type Distance = u32;
+type HSkip = u8;
 
 #[derive(Debug, Clone, PartialEq)]
 enum PrefixCodeKind {
 	Simple,
-	Complex,
+	Complex(HSkip),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,11 +66,11 @@ enum PrefixCode {
 }
 
 impl PrefixCode {
-	fn new_simple() -> PrefixCode {
+	fn new_simple(n_sym: Option<NSym>, symbols: Option<Symbols>, tree_select:Option<TreeSelect>) -> PrefixCode {
 		PrefixCode::Simple(PrefixCodeSimple {
-			n_sym: None,
-			symbols: None,
-			tree_select: None,
+			n_sym: n_sym,
+			symbols: symbols,
+			tree_select: tree_select,
 		})
 	}
 }
@@ -210,6 +211,7 @@ enum State {
 	ContextModesLiterals(ContextModes),
 	NTreesL(NTreesL),
 	NTreesD(NTreesD),
+	ContextMapDistances(ContextMap),
 	PrefixCodeLiterals((PrefixCode, HuffmanCodes)),
 	PrefixCodeInsertAndCopyLengths((PrefixCode, HuffmanCodes)),
 	PrefixCodeDistances((PrefixCode, HuffmanCodes)),
@@ -236,7 +238,9 @@ enum DecompressorError {
 	InvalidMSkipLen,
 	ParseErrorInsertAndCopyLength,
 	ParseErrorInsertLiterals,
+	ParseErrorContextMapDistances,
 	ExceededExpectedBytes,
+	ParseErrorComplexPrefixCodeLengths,
 }
 
 impl Display for DecompressorError {
@@ -259,6 +263,8 @@ impl Error for DecompressorError {
 			&DecompressorError::ParseErrorInsertAndCopyLength => "Error parsing Insert And Copy Length",
 			&DecompressorError::ParseErrorInsertLiterals => "Error parsing Insert Literals",
 			&DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
+			&DecompressorError::ParseErrorContextMapDistances => "Error parsing context map for distances",
+			&DecompressorError::ParseErrorComplexPrefixCodeLengths => "Error parsing code lengths for complex prefix code",
 		}
 	}
 }
@@ -562,27 +568,12 @@ impl<R: Read> Decompressor<R> {
 	fn parse_prefix_code_kind(&mut self) -> result::Result<PrefixCodeKind, DecompressorError> {
 		match self.in_stream.read_u8_from_n_bits(2) {
 			Ok(1) => Ok(PrefixCodeKind::Simple),
-			Ok(_) => Ok(PrefixCodeKind::Complex),
+			Ok(h_skip) => Ok(PrefixCodeKind::Complex(h_skip)),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_prefix_code(&mut self, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
-		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
-
-		println!("Bit Width = {:?}", bit_width);
-
-		let prefix_code_kind = match self.parse_prefix_code_kind() {
-			Ok(kind) => kind,
-			Err(e) => return Err(e),
-		};
-
-		if prefix_code_kind == PrefixCodeKind::Complex {
-			unimplemented!();
-		}
-
-		println!("Prefix Code Kind = {:?}", prefix_code_kind);
-
+	fn parse_simple_prefix_code(&mut self, bit_width: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
 		let n_sym = match self.in_stream.read_u8_from_n_bits(2) {
 			Ok(my_u8) => (my_u8 + 1) as usize,
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
@@ -619,12 +610,166 @@ impl<R: Read> Decompressor<R> {
 
 		println!("Code Lengths = {:?}", code_lengths);
 
-		Ok((PrefixCode::Simple(PrefixCodeSimple {
-				n_sym: Some(n_sym as u8),
-				symbols: Some(symbols.clone()),
-				tree_select: tree_select,
-			}),
+		Ok((PrefixCode::new_simple(Some(n_sym as u8), Some(symbols.clone()), tree_select),
             huffman::codes_from_lengths_and_symbols(code_lengths, &symbols)))
+	}
+
+	fn parse_complex_prefix_code(&mut self, h_skip: u8, bit_width: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
+		let mut symbols = vec![1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+		let bit_lengths_code = {
+			let bit_lengths_patterns = vec![
+				vec![false, false],
+				vec![true, true, true, false],
+				vec![true, true, false],
+				vec![false, true],
+				vec![true, false],
+				vec![true, true, true, true],
+			];
+			let symbols = vec![0, 1, 2, 3, 4, 5];
+			let mut codes = Tree::new();
+
+			for i in 0..bit_lengths_patterns.len() {
+				codes.insert(bit_lengths_patterns[i].clone(), symbols[i]);
+			}
+
+			codes
+		};
+
+		println!("Bit Lengths Code {:?}", bit_lengths_code);
+
+		let mut code_lengths = vec![0; symbols.len()];
+		let mut sum = 0usize;
+
+		for i in (h_skip as usize)..symbols.len() {
+
+			code_lengths[i] = match bit_lengths_code.lookup_symbol(&mut self.in_stream) {
+				Some(code_length) => code_length as usize,
+				None => return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths),
+			};
+
+			if code_lengths[i] > 0 {
+
+				sum += 32 >> code_lengths[i];
+
+				// println!("code length = {:?}", code_lengths[i]);
+				// println!("32 >> code length = {:?}", 32 >> code_lengths[i]);
+				// println!("sum = {:?}", sum);
+
+				if sum == 32 {
+					break;
+				}
+			}
+		}
+
+		println!("Code Lengths = {:?}", code_lengths);
+		println!("Symbols = {:?}", symbols);
+
+		code_lengths = vec![code_lengths[4], code_lengths[0], code_lengths[1], code_lengths[2], code_lengths[3], code_lengths[5], code_lengths[7], code_lengths[9], code_lengths[10], code_lengths[11], code_lengths[12], code_lengths[13], code_lengths[14], code_lengths[15], code_lengths[16], code_lengths[17], code_lengths[8], code_lengths[6]];
+		symbols = (0..18).collect::<Vec<_>>();
+
+		println!("Code Lengths = {:?}", code_lengths);
+		println!("Symbols = {:?}", symbols);
+
+		let prefix_code_code_lengths = huffman::codes_from_lengths_and_symbols(code_lengths, &symbols);
+
+		println!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths);
+
+		let mut actual_code_lengths = Vec::new();
+		let mut sum = 0usize;
+		let mut last_code_length = None;
+		let mut last_repeat = None;
+
+		loop {
+			match prefix_code_code_lengths.lookup_symbol(&mut self.in_stream) {
+				Some(new_code_length @ 0...15) => {
+					print!(" {:?},", (actual_code_lengths.len() as u8 )as char);
+
+					actual_code_lengths.push(new_code_length as usize);
+					last_code_length = Some(new_code_length);
+					last_repeat = None;
+
+					// println!("code length = {:?}", new_code_length);
+
+					if new_code_length > 0 {
+
+						sum += 32768 >> new_code_length;
+
+						// println!("32768 >> code length = {:?}", 32768 >> new_code_length);
+						// println!("sum = {:?}", sum);
+
+						if sum == 32768 {
+							break;
+						}
+					}
+				},
+				Some(16) => unimplemented!(),
+				Some(17) => {
+					let extra_bits = match self.in_stream.read_u8_from_n_bits(3) {
+						Ok(my_u8) => my_u8,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+
+					// println!("code length = 17, extra bits = {:?}", extra_bits);
+
+
+					last_repeat = match (last_code_length, last_repeat) {
+						(Some(17), Some(last_repeat)) => {
+							let new_repeat = (8 * (last_repeat - 2)) + extra_bits + 3;
+
+							for _ in 0..new_repeat - last_repeat {
+								actual_code_lengths.push(0);
+							}
+
+							Some(new_repeat)
+						},
+						(_, _) => {
+							let last_repeat = 3 + extra_bits;
+
+							for _ in 0..last_repeat as usize {
+								actual_code_lengths.push(0);
+							}
+
+							Some(last_repeat)
+						},
+					};
+
+					last_code_length = Some(17);
+				},
+				Some(_) => unreachable!(),
+				None => return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths),
+			};
+		}
+
+		println!("");
+
+		let mut chars = String::from("ukko nooa, ukko nooa oli kunnon mies, kun han meni saunaan, pisti laukun naulaan, ukko nooa, ukko nooa oli kunnon mies.").chars().collect::<Vec<_>>();
+
+		chars.sort();
+		chars.dedup();
+
+		println!("{:?}", chars);
+		println!("Actual Code Lengths = {:?}", actual_code_lengths);
+
+		Ok((PrefixCode::Complex,
+			huffman::codes_from_lengths(actual_code_lengths)))
+	}
+
+	fn parse_prefix_code(&mut self, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
+		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
+
+		println!("Bit Width = {:?}", bit_width);
+
+		let prefix_code_kind = match self.parse_prefix_code_kind() {
+			Ok(kind) => kind,
+			Err(e) => return Err(e),
+		};
+
+		println!("Prefix Code Kind = {:?}", prefix_code_kind);
+
+		match prefix_code_kind {
+			PrefixCodeKind::Complex(h_skip) => self.parse_complex_prefix_code(h_skip, bit_width),
+			PrefixCodeKind::Simple => self.parse_simple_prefix_code(bit_width),
+		}
 	}
 
 	fn parse_prefix_code_literals(&mut self) -> result::Result<State, DecompressorError> {
@@ -670,8 +815,60 @@ impl<R: Read> Decompressor<R> {
 
 		println!("Alphabet Size = {:?}", alphabet_size);
 
+		let (prefix_code, prefix_tree) = match self.parse_prefix_code(alphabet_size) {
+			Ok(v) => v,
+			Err(e) => return Err(e),
+		};
 
-		unimplemented!();
+		println!("Prefix Code Context Map Distances = {:?}", prefix_code);
+		println!("Prefix Tree Context Map Distances = {:?}", prefix_tree);
+
+		let n_bltypes_d = self.meta_block.header.n_bltypes_d.unwrap();
+
+		if rlemax > 0 {
+			// @TODO properly decode run lengths below, as described in Brotli RFC, section 7.3.
+			unimplemented!();
+		}
+
+		let mut c_map_d = Vec::with_capacity((n_bltypes_d * 4) as usize);
+
+		for _ in 0..(n_bltypes_d * 4) as usize {
+			match prefix_tree.lookup_symbol(&mut self.in_stream) {
+				Some(context_id) => c_map_d.push(context_id as u8),
+				None => return Err(DecompressorError::ParseErrorContextMapDistances),
+			}
+		}
+
+		let imtf_bit = match self.in_stream.read_bit() {
+			Ok(v) => v,
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
+		};
+
+		println!("IMTF BIT = {:?}", imtf_bit);
+
+		Self::inverse_move_to_front_transform(&mut c_map_d);
+
+		Ok(State::ContextMapDistances(c_map_d))
+	}
+
+	fn inverse_move_to_front_transform(v: &mut[u8]) {
+		let mut mtf: Vec<u8> = vec![0; 256];
+		let v_len = v.len();
+
+		for i in 0..256 {
+			mtf[i] = i as u8;
+		}
+
+		for i in 0..v_len {
+			let index = v[i] as usize;
+			let value = mtf[index];
+			v[i] = value;
+
+			for j in (1..index+1).rev() {
+				mtf[j] = mtf[j - 1];
+			}
+			mtf[0] = value;
+		}
 	}
 
 	fn parse_insert_and_copy_length(&mut self) -> result::Result<State, DecompressorError> {
@@ -821,13 +1018,9 @@ impl<R: Read> Decompressor<R> {
 				n_sym: Some(2...4),
 				symbols: _,
 				tree_select: _,
-			})) => {
-				unimplemented!();
-				// @NOTE Need to create prefix tree for distances first
-				// match self.meta_block.prefix_tree_distances.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
-				// 	Some(symbol) => symbol as DistanceCode,
-				// 	None => return Err(DecompressorError::ParseErrorInsertLiterals),
-				// }
+			})) => match self.meta_block.prefix_tree_distances.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+				Some(symbol) => symbol as DistanceCode,
+				None => return Err(DecompressorError::ParseErrorInsertLiterals),
 			},
 			_ => unimplemented!(),
 		};
@@ -1217,6 +1410,16 @@ impl<R: Read> Decompressor<R> {
 						}
 					};
 				},
+				State::ContextMapDistances(c_map_d) => {
+					self.meta_block.header.c_map_d = Some(c_map_d);
+
+					println!("CMAPD = {:?}", self.meta_block.header.c_map_d);
+
+					self.state = match self.parse_prefix_code_literals() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
+				},
 				State::PrefixCodeLiterals((prefix_code, prefix_tree)) => {
 					self.meta_block.header.prefix_code_literals = Some(prefix_code);
 					self.meta_block.prefix_tree_literals = Some(prefix_tree);
@@ -1235,6 +1438,9 @@ impl<R: Read> Decompressor<R> {
 
 					println!("Prefix Code Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
 					println!("Prefix Tree Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_insert_and_copy_lengths);
+
+					// @TODO here, we need to parse n_trees_d # of prefix trees, not just one
+					unimplemented!();
 
 					self.state = match self.parse_prefix_code_distances() {
 						Ok(state) => state,
