@@ -101,7 +101,7 @@ struct MetaBlock {
 	context_modes_literals: Option<ContextModes>,
 	prefix_tree_literals: Option<HuffmanCodes>,
 	prefix_tree_insert_and_copy_lengths: Option<HuffmanCodes>,
-	prefix_tree_distances: Option<HuffmanCodes>,
+	prefix_trees_distances: Option<Vec<HuffmanCodes>>,
 	btype_l: Option<NBltypes>,
 	blen_l: Option<BLen>,
 	btype_i: Option<NBltypes>,
@@ -129,7 +129,7 @@ impl MetaBlock {
 			context_modes_literals: None,
 			prefix_tree_literals: None,
 			prefix_tree_insert_and_copy_lengths: None,
-			prefix_tree_distances: None,
+			prefix_trees_distances: None,
 			insert_and_copy_length: None,
 			insert_length: None,
 			copy_length: None,
@@ -158,7 +158,7 @@ struct MetaBlockHeader {
 	c_map_d: Option<ContextMap>,
 	prefix_code_literals: Option<PrefixCode>,
 	prefix_code_insert_and_copy_lengths: Option<PrefixCode>,
-	prefix_code_distances: Option<PrefixCode>,
+	prefix_codes_distances: Option<Vec<PrefixCode>>,
 }
 
 impl MetaBlockHeader {
@@ -181,7 +181,7 @@ impl MetaBlockHeader {
 			c_map_d: None,
 			prefix_code_literals: None,
 			prefix_code_insert_and_copy_lengths: None,
-			prefix_code_distances: None,
+			prefix_codes_distances: None,
 		}
 	}
 }
@@ -214,7 +214,7 @@ enum State {
 	ContextMapDistances(ContextMap),
 	PrefixCodeLiterals((PrefixCode, HuffmanCodes)),
 	PrefixCodeInsertAndCopyLengths((PrefixCode, HuffmanCodes)),
-	PrefixCodeDistances((PrefixCode, HuffmanCodes)),
+	PrefixCodesDistances(Vec<(PrefixCode, HuffmanCodes)>),
 	DataMetaBlockBegin,
 	InsertAndCopyLength(InsertAndCopyLength),
 	InsertLengthAndCopyLength(InsertLengthAndCopyLength),
@@ -790,13 +790,19 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn parse_prefix_code_distances(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_prefix_codes_distances(&mut self) -> result::Result<State, DecompressorError> {
+		let n_trees_d = self.meta_block.header.n_trees_d.unwrap() as usize;
+		let mut prefix_codes = Vec::with_capacity(n_trees_d);
 		let alphabet_size = 16 + self.meta_block.header.n_direct.unwrap() as usize + 48 << self.meta_block.header.n_postfix.unwrap() as usize;
 
-		match self.parse_prefix_code(alphabet_size) {
-			Ok(prefix_code) => Ok(State::PrefixCodeDistances(prefix_code)),
-			Err(e) => Err(e),
+		for _ in 0..n_trees_d {
+			prefix_codes.push(match self.parse_prefix_code(alphabet_size) {
+				Ok(prefix_code) => prefix_code,
+				Err(e) => return Err(e),
+			});
 		}
+
+		Ok(State::PrefixCodesDistances(prefix_codes))
 	}
 
 	fn parse_context_map_distances(&mut self) -> result::Result<State, DecompressorError> {
@@ -882,11 +888,13 @@ impl<R: Read> Decompressor<R> {
 				n_sym: Some(2...4),
 				symbols: _,
 				tree_select: _,
-			})) => {
-				match self.meta_block.prefix_tree_insert_and_copy_lengths.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
-					Some(symbol) => Ok(State::InsertAndCopyLength(symbol)),
-					None => Err(DecompressorError::ParseErrorInsertAndCopyLength),
-				}
+			})) => match self.meta_block.prefix_tree_insert_and_copy_lengths.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+				Some(symbol) => Ok(State::InsertAndCopyLength(symbol)),
+				None => Err(DecompressorError::ParseErrorInsertAndCopyLength),
+			},
+			Some(PrefixCode::Complex) => match self.meta_block.prefix_tree_insert_and_copy_lengths.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+				Some(symbol) => Ok(State::InsertAndCopyLength(symbol)),
+				None => Err(DecompressorError::ParseErrorInsertAndCopyLength),
 			},
 			_ => unimplemented!()
 		}
@@ -981,11 +989,13 @@ impl<R: Read> Decompressor<R> {
 					n_sym: Some(2...4),
 					symbols: _,
 					tree_select: _,
-				})) => {
-					match self.meta_block.prefix_tree_literals.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
-						Some(symbol) => symbol as Literal,
-						None => return Err(DecompressorError::ParseErrorInsertLiterals),
-					}
+				})) => match self.meta_block.prefix_tree_literals.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+					Some(symbol) => symbol as Literal,
+					None => return Err(DecompressorError::ParseErrorInsertLiterals),
+				},
+				Some(PrefixCode::Complex) => match self.meta_block.prefix_tree_literals.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+					Some(symbol) => symbol as Literal,
+					None => return Err(DecompressorError::ParseErrorInsertLiterals),
 				},
 				_ => unimplemented!(),
 			}
@@ -1008,17 +1018,21 @@ impl<R: Read> Decompressor<R> {
 			Some(ref mut blen_d) => *blen_d -= 1,
 		}
 
-		let distance_code = match self.meta_block.header.prefix_code_distances {
-			Some(PrefixCode::Simple(PrefixCodeSimple {
+		// @TODO evaluate context map for distances here to figure out
+		//       which code to use;
+		let index = 0usize;
+
+		let distance_code = match self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index] {
+			PrefixCode::Simple(PrefixCodeSimple {
 				n_sym: Some(1),
 				symbols: Some(ref symbols),
 				tree_select: _,
-			})) => symbols[0] as DistanceCode,
-			Some(PrefixCode::Simple(PrefixCodeSimple {
+			}) => symbols[0] as DistanceCode,
+			PrefixCode::Simple(PrefixCodeSimple {
 				n_sym: Some(2...4),
 				symbols: _,
 				tree_select: _,
-			})) => match self.meta_block.prefix_tree_distances.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+			}) => match self.meta_block.prefix_trees_distances.as_ref().unwrap()[index].lookup_symbol(&mut self.in_stream) {
 				Some(symbol) => symbol as DistanceCode,
 				None => return Err(DecompressorError::ParseErrorInsertLiterals),
 			},
@@ -1439,20 +1453,19 @@ impl<R: Read> Decompressor<R> {
 					println!("Prefix Code Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
 					println!("Prefix Tree Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_insert_and_copy_lengths);
 
-					// @TODO here, we need to parse n_trees_d # of prefix trees, not just one
-					unimplemented!();
-
-					self.state = match self.parse_prefix_code_distances() {
+					self.state = match self.parse_prefix_codes_distances() {
 						Ok(state) => state,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 				},
-				State::PrefixCodeDistances((prefix_code, prefix_tree)) => {
-					self.meta_block.header.prefix_code_distances = Some(prefix_code);
-					self.meta_block.prefix_tree_distances = Some(prefix_tree);
+				State::PrefixCodesDistances(prefix_codes_and_trees) => {
+					let (prefix_codes, prefix_trees): (Vec<_>, Vec<_>) = prefix_codes_and_trees.iter().cloned().unzip();
 
-					println!("Prefix Code Distances = {:?}", self.meta_block.header.prefix_code_distances);
-					println!("Prefix Tree Distances = {:?}", self.meta_block.prefix_tree_distances);
+					self.meta_block.header.prefix_codes_distances = Some(prefix_codes);
+					self.meta_block.prefix_trees_distances = Some(prefix_trees);
+
+					println!("Prefix Codes Distances = {:?}", self.meta_block.header.prefix_codes_distances);
+					println!("Prefix Trees Distances = {:?}", self.meta_block.prefix_trees_distances);
 
 					self.state = State::DataMetaBlockBegin;
 				},
