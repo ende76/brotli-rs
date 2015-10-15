@@ -664,6 +664,14 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_complex_prefix_code(&mut self, h_skip: u8, bit_width: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
+		// @TODO: probably need to add parameter alphabet_size here to be able to
+		//        reject streams with excessive repeated trailing zeros, as per section
+		//        3.5. of the RFC:
+		//        "If the number of times to repeat the previous length
+		//         or repeat a zero length would result in more lengths in
+		//         total than the number of symbols in the alphabet, then the
+		//         stream should be rejected as invalid."
+
 		let mut symbols = vec![1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 		let bit_lengths_code = {
 			let bit_lengths_patterns = vec![
@@ -791,12 +799,6 @@ impl<R: Read> Decompressor<R> {
 
 		println!("");
 
-		let mut chars = String::from("ukko nooa, ukko nooa oli kunnon mies, kun han meni saunaan, pisti laukun naulaan, ukko nooa, ukko nooa oli kunnon mies.").chars().collect::<Vec<_>>();
-
-		chars.sort();
-		chars.dedup();
-
-		println!("{:?}", chars);
 		println!("Actual Code Lengths = {:?}", actual_code_lengths);
 
 		Ok((PrefixCode::Complex,
@@ -1472,7 +1474,7 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::NTreesD(n_trees_d) => {
 					self.meta_block.header.n_trees_d = Some(n_trees_d);
-					self.meta_block.header.c_map_d = Some(vec![0; self.meta_block.header.n_bltypes_d.unwrap() as usize]);
+					self.meta_block.header.c_map_d = Some(vec![0; 4 * self.meta_block.header.n_bltypes_d.unwrap() as usize]);
 
 					println!("NTREESD = {:?}", n_trees_d);
 
