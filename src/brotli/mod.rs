@@ -10,6 +10,55 @@ use std::io;
 use std::io::Read;
 use std::result;
 
+#[derive(Debug, Clone, PartialEq)]
+struct RingBuffer<T> {
+	buf: Vec<T>,
+	pos: usize,
+}
+
+impl<T> RingBuffer<T> {
+	fn from_vec(v: Vec<T>) -> RingBuffer<T> {
+		RingBuffer{
+			buf: v,
+			pos: 0,
+		}
+	}
+
+	fn nth(&self, n: usize) -> Result<&T, RingBufferError> {
+		if n >= self.buf.len() {
+			Err(RingBufferError::ParameterExceededSize)
+		} else {
+			Ok(&self.buf[(self.pos + n) % self.buf.len()])
+		}
+	}
+
+	fn push(&mut self, item: T) {
+		self.pos = (self.pos + self.buf.len() - 1) % self.buf.len();
+		self.buf[self.pos] = item;
+	}
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+enum RingBufferError {
+	ParameterExceededSize,
+}
+
+impl Display for RingBufferError {
+	fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+
+		fmt.write_str(self.description())
+	}
+}
+
+impl Error for RingBufferError {
+	fn description(&self) -> &str {
+		match self {
+			&RingBufferError::ParameterExceededSize => "Index parameter exceeded ring buffer size",
+		}
+	}
+}
+
 
 type WBits = u8;
 type CodeLengths = Vec<usize>;
@@ -241,6 +290,7 @@ enum DecompressorError {
 	ParseErrorContextMapDistances,
 	ExceededExpectedBytes,
 	ParseErrorComplexPrefixCodeLengths,
+	RingBufferError,
 }
 
 impl Display for DecompressorError {
@@ -265,6 +315,7 @@ impl Error for DecompressorError {
 			&DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
 			&DecompressorError::ParseErrorContextMapDistances => "Error parsing context map for distances",
 			&DecompressorError::ParseErrorComplexPrefixCodeLengths => "Error parsing code lengths for complex prefix code",
+			&DecompressorError::RingBufferError => "Error accessing distance ring buffer",
 		}
 	}
 }
@@ -297,8 +348,7 @@ pub struct Decompressor<R: Read> {
 	/// ring buffer for last 4 distances, gets set
 	/// at the beginning of the stream, and then
 	/// lives until the end
-	distance_buf: Vec<Distance>,
-	distance_buf_pos: usize,
+	distance_buf: RingBuffer<Distance>,
 }
 
 impl<R: Read> Decompressor<R> {
@@ -313,8 +363,7 @@ impl<R: Read> Decompressor<R> {
 			count_output: 0,
 			p1: 0,
 			p2: 0,
-			distance_buf: vec![4, 11, 15, 16],
-			distance_buf_pos: 0,
+			distance_buf: RingBuffer::from_vec(vec![4, 11, 15, 16]),
 		}
 	}
 
@@ -1018,9 +1067,17 @@ impl<R: Read> Decompressor<R> {
 			Some(ref mut blen_d) => *blen_d -= 1,
 		}
 
-		// @TODO evaluate context map for distances here to figure out
-		//       which code to use;
-		let index = 0usize;
+		let cid = match self.meta_block.copy_length {
+			Some(0...1) => unreachable!(),
+			Some(c @ 2...4) => c - 2,
+			Some(_) => 3,
+			_ => unreachable!(),
+		};
+
+		let index = self.meta_block.header.c_map_d.as_ref().unwrap()[self.meta_block.btype_d.unwrap() as usize * 4 + cid as usize] as usize;
+
+		println!("distance prefix code index = {:?}", index);
+		println!("distance prefix code = {:?}", self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index]);
 
 		let distance_code = match self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index] {
 			PrefixCode::Simple(PrefixCodeSimple {
@@ -1044,11 +1101,18 @@ impl<R: Read> Decompressor<R> {
 
 	fn decode_distance(&mut self) -> result::Result<State, DecompressorError> {
 		let distance = match self.meta_block.distance_code {
-			Some(0) => {
-				self.distance_buf[self.distance_buf_pos]
+			Some(d @ 0...3) => match self.distance_buf.nth(d as usize) {
+				Ok(distance) => *distance,
+				Err(_) => return Err(DecompressorError::RingBufferError),
+			},
+			Some(d @ 4...9) => {
+				match (self.distance_buf.nth(0), 2 * (d % 2) - 1, (d - 2) >> 1) {
+					(Ok(distance), sign, d) => *distance + sign * d,
+					(Err(_), _, _) => return Err(DecompressorError::RingBufferError),
+				}
 			},
 			// reference distance_buf here, to get the decoded distance
-			Some(1...15) => unimplemented!(),
+			Some(10...15) => unimplemented!(),
 			Some(dcode) if dcode <= (15 + self.meta_block.header.n_direct.unwrap() as DistanceCode) => dcode - 15,
 			// use NDIRECT and NPOSTFIX calculations, as described in the RFC, section 4.
 			// to calculate the decoded distance
@@ -1058,9 +1122,8 @@ impl<R: Read> Decompressor<R> {
 
 				println!("NDISTBITS = {:?}", ndistbits);
 
-				let dextra = match self.in_stream.read_bit() {
-					Ok(true) => 1,
-					Ok(false) => 0,
+				let dextra = match self.in_stream.read_u32_from_n_bits(ndistbits as usize) {
+					Ok(my_u32) => my_u32,
 					Err(_) => return Err(DecompressorError::UnexpectedEOF),
 				};
 
@@ -1088,9 +1151,10 @@ impl<R: Read> Decompressor<R> {
 			None => unreachable!()
 		};
 
+		println!("(dc, db, d) = {:?}", (self.meta_block.distance_code, self.distance_buf.clone(), distance));
+
 		if self.meta_block.distance_code.unwrap() > 0 {
-			self.distance_buf_pos = (self.distance_buf_pos + 3) % 4;
-			self.distance_buf[self.distance_buf_pos] = distance;
+			self.distance_buf.push(distance);
 		}
 
 		Ok(State::Distance(distance))
@@ -1554,7 +1618,9 @@ impl<R: Read> Decompressor<R> {
 						}
 					};
 
-					return Ok(self.buf.len());
+					if self.buf.len() > 0 {
+						return Ok(self.buf.len());
+					}
 				},
 				State::DistanceCode(distance_code) => {
 					self.meta_block.distance_code = Some(distance_code);
@@ -1594,26 +1660,35 @@ impl<R: Read> Decompressor<R> {
 
 					println!("output = {:?}", self.buf);
 
+
 					if (self.meta_block.header.m_len.unwrap() as usize) < self.meta_block.count_output {
+
 						return Err(DecompressorError::ExceededExpectedBytes);
 					}
 
 					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
+
 						State::DataMetaBlockEnd
 					} else {
+
 						State::DataMetaBlockBegin
 					};
 
-					return Ok(self.buf.len());
+					// println!("ukko nooa, ukko nooa oli kunnon mies, kun han meni saunaan, pisti laukun naulaan, ukko nooa, ukko nooa oli kunnon mies.");
+					// println!("{}", String::from_utf8(self.output_window.clone().into_iter().filter(|&b| b > 0).collect::<Vec<_>>()).unwrap());
 
+					return Ok(self.buf.len());
 				},
 				State::DataMetaBlockEnd => {
+
 					self.state = State::MetaBlockEnd;
 				},
 				State::MetaBlockEnd => {
 					self.state = if self.meta_block.header.is_last.unwrap() {
+
 						State::StreamEnd
 					} else {
+
 						State::HeaderMetaBlockBegin
 					};
 				},
