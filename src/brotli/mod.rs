@@ -205,6 +205,7 @@ struct MetaBlockHeader {
 	n_trees_l: Option<NTreesL>,
 	n_trees_d: Option<NTreesD>,
 	c_map_d: Option<ContextMap>,
+	c_map_l: Option<ContextMap>,
 	prefix_code_literals: Option<PrefixCode>,
 	prefix_code_insert_and_copy_lengths: Option<PrefixCode>,
 	prefix_codes_distances: Option<Vec<PrefixCode>>,
@@ -228,6 +229,7 @@ impl MetaBlockHeader {
 			n_trees_l: None,
 			n_trees_d: None,
 			c_map_d: None,
+			c_map_l: None,
 			prefix_code_literals: None,
 			prefix_code_insert_and_copy_lengths: None,
 			prefix_codes_distances: None,
@@ -261,6 +263,7 @@ enum State {
 	NTreesL(NTreesL),
 	NTreesD(NTreesD),
 	ContextMapDistances(ContextMap),
+	ContextMapLiterals(ContextMap),
 	PrefixCodeLiterals((PrefixCode, HuffmanCodes)),
 	PrefixCodeInsertAndCopyLengths((PrefixCode, HuffmanCodes)),
 	PrefixCodesDistances(Vec<(PrefixCode, HuffmanCodes)>),
@@ -339,12 +342,10 @@ pub struct Decompressor<R: Read> {
 	state: State,
 	meta_block: MetaBlock,
 	count_output: usize,
-	/// most recent byte in output stream
-	/// used to determine context mode for literals
-	p1: u8,
-	/// second most recent byte in output stream
-	/// used to determine context mode for literals
-	p2: u8,
+	/// ring buffer for last 2 literals, gets set
+	/// at the beginning of the stream, and then
+	/// lives until the end
+	literal_buf: RingBuffer<Literal>,
 	/// ring buffer for last 4 distances, gets set
 	/// at the beginning of the stream, and then
 	/// lives until the end
@@ -361,8 +362,7 @@ impl<R: Read> Decompressor<R> {
 			state: State::StreamBegin,
 			meta_block: MetaBlock::new(),
 			count_output: 0,
-			p1: 0,
-			p2: 0,
+			literal_buf: RingBuffer::from_vec(vec![0, 0]),
 			distance_buf: RingBuffer::from_vec(vec![4, 11, 15, 16]),
 		}
 	}
@@ -622,7 +622,11 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn parse_simple_prefix_code(&mut self, bit_width: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
+	fn parse_simple_prefix_code(&mut self, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
+		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
+
+		println!("Bit Width = {:?}", bit_width);
+
 		let n_sym = match self.in_stream.read_u8_from_n_bits(2) {
 			Ok(my_u8) => (my_u8 + 1) as usize,
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
@@ -663,7 +667,7 @@ impl<R: Read> Decompressor<R> {
             huffman::codes_from_lengths_and_symbols(code_lengths, &symbols)))
 	}
 
-	fn parse_complex_prefix_code(&mut self, h_skip: u8, bit_width: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
+	fn parse_complex_prefix_code(&mut self, h_skip: u8, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
 		// @TODO: probably need to add parameter alphabet_size here to be able to
 		//        reject streams with excessive repeated trailing zeros, as per section
 		//        3.5. of the RFC:
@@ -806,10 +810,6 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_prefix_code(&mut self, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
-		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
-
-		println!("Bit Width = {:?}", bit_width);
-
 		let prefix_code_kind = match self.parse_prefix_code_kind() {
 			Ok(kind) => kind,
 			Err(e) => return Err(e),
@@ -818,8 +818,8 @@ impl<R: Read> Decompressor<R> {
 		println!("Prefix Code Kind = {:?}", prefix_code_kind);
 
 		match prefix_code_kind {
-			PrefixCodeKind::Complex(h_skip) => self.parse_complex_prefix_code(h_skip, bit_width),
-			PrefixCodeKind::Simple => self.parse_simple_prefix_code(bit_width),
+			PrefixCodeKind::Complex(h_skip) => self.parse_complex_prefix_code(h_skip, alphabet_size),
+			PrefixCodeKind::Simple => self.parse_simple_prefix_code(alphabet_size),
 		}
 	}
 
@@ -1185,8 +1185,6 @@ impl<R: Read> Decompressor<R> {
 			window[i] = window[i % l];
 		}
 
-		println!("window = {:?}", window);
-
 		Ok(State::CopyLiterals(window))
 	}
 
@@ -1472,6 +1470,9 @@ impl<R: Read> Decompressor<R> {
 						}
 					};
 				},
+				State::ContextMapLiterals(c_map_l) => {
+					unimplemented!();
+				},
 				State::NTreesD(n_trees_d) => {
 					self.meta_block.header.n_trees_d = Some(n_trees_d);
 					self.meta_block.header.c_map_d = Some(vec![0; 4 * self.meta_block.header.n_bltypes_d.unwrap() as usize]);
@@ -1592,14 +1593,11 @@ impl<R: Read> Decompressor<R> {
 				State::InsertLiterals(insert_literals) => {
 					for literal in insert_literals {
 						self.buf.push_front(literal);
-						self.p2 = self.p1;
-						self.p1 = literal;
+						self.literal_buf.push(literal);
 						self.output_window[self.count_output % self.header.window_size.unwrap() as usize] = literal;
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
 					}
-
-					println!("output = {:?}", self.buf);
 
 					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
 						State::DataMetaBlockEnd
@@ -1653,8 +1651,7 @@ impl<R: Read> Decompressor<R> {
 				State::CopyLiterals(copy_literals) => {
 					for literal in copy_literals {
 						self.buf.push_front(literal);
-						self.p2 = self.p1;
-						self.p1 = literal;
+						self.literal_buf.push(literal);
 						self.output_window[self.count_output % self.header.window_size.unwrap() as usize] = literal;
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
