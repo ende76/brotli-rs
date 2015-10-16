@@ -81,8 +81,7 @@ type NDirect = u8;
 type ContextMode = u16;
 type ContextModes = Vec<ContextMode>;
 type ContextMap = Vec<u8>;
-type NTreesL = u8;
-type NTreesD = u8;
+type NTrees = u8;
 type NSym = u8;
 type Symbol = u16;
 type Symbols = Vec<Symbol>;
@@ -202,8 +201,8 @@ struct MetaBlockHeader {
 	n_bltypes_d: Option<NBltypes>,
 	n_postfix: Option<NPostfix>,
 	n_direct: Option<NDirect>,
-	n_trees_l: Option<NTreesL>,
-	n_trees_d: Option<NTreesD>,
+	n_trees_l: Option<NTrees>,
+	n_trees_d: Option<NTrees>,
 	c_map_d: Option<ContextMap>,
 	c_map_l: Option<ContextMap>,
 	prefix_code_literals: Option<PrefixCode>,
@@ -260,8 +259,8 @@ enum State {
 	NPostfix(NPostfix),
 	NDirect(NDirect),
 	ContextModesLiterals(ContextModes),
-	NTreesL(NTreesL),
-	NTreesD(NTreesD),
+	NTreesL(NTrees),
+	NTreesD(NTrees),
 	ContextMapDistances(ContextMap),
 	ContextMapLiterals(ContextMap),
 	PrefixCodeLiterals((PrefixCode, HuffmanCodes)),
@@ -290,7 +289,7 @@ enum DecompressorError {
 	InvalidMSkipLen,
 	ParseErrorInsertAndCopyLength,
 	ParseErrorInsertLiterals,
-	ParseErrorContextMapDistances,
+	ParseErrorContextMap,
 	ExceededExpectedBytes,
 	ParseErrorComplexPrefixCodeLengths,
 	RingBufferError,
@@ -316,7 +315,7 @@ impl Error for DecompressorError {
 			&DecompressorError::ParseErrorInsertAndCopyLength => "Error parsing Insert And Copy Length",
 			&DecompressorError::ParseErrorInsertLiterals => "Error parsing Insert Literals",
 			&DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
-			&DecompressorError::ParseErrorContextMapDistances => "Error parsing context map for distances",
+			&DecompressorError::ParseErrorContextMap => "Error parsing context map",
 			&DecompressorError::ParseErrorComplexPrefixCodeLengths => "Error parsing code lengths for complex prefix code",
 			&DecompressorError::RingBufferError => "Error accessing distance ring buffer",
 		}
@@ -856,7 +855,7 @@ impl<R: Read> Decompressor<R> {
 		Ok(State::PrefixCodesDistances(prefix_codes))
 	}
 
-	fn parse_context_map_distances(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_context_map(&mut self, n_trees: NTrees, len: usize) -> result::Result<ContextMap, DecompressorError> {
 		let rlemax = match self.in_stream.read_bit() {
 			Ok(false) => 0,
 			Ok(true) => match self.in_stream.read_u8_from_n_bits(4) {
@@ -868,7 +867,7 @@ impl<R: Read> Decompressor<R> {
 
 		println!("RLEMAX = {:?}", rlemax);
 
-		let alphabet_size = (rlemax + self.meta_block.header.n_trees_d.unwrap()) as usize;
+		let alphabet_size = (rlemax + n_trees) as usize;
 
 		println!("Alphabet Size = {:?}", alphabet_size);
 
@@ -877,22 +876,20 @@ impl<R: Read> Decompressor<R> {
 			Err(e) => return Err(e),
 		};
 
-		println!("Prefix Code Context Map Distances = {:?}", prefix_code);
-		println!("Prefix Tree Context Map Distances = {:?}", prefix_tree);
-
-		let n_bltypes_d = self.meta_block.header.n_bltypes_d.unwrap();
+		println!("Prefix Code Context Map = {:?}", prefix_code);
+		println!("Prefix Tree Context Map = {:?}", prefix_tree);
 
 		if rlemax > 0 {
 			// @TODO properly decode run lengths below, as described in Brotli RFC, section 7.3.
 			unimplemented!();
 		}
 
-		let mut c_map_d = Vec::with_capacity((n_bltypes_d * 4) as usize);
+		let mut c_map = Vec::with_capacity(len);
 
-		for _ in 0..(n_bltypes_d * 4) as usize {
+		for _ in 0..len {
 			match prefix_tree.lookup_symbol(&mut self.in_stream) {
-				Some(context_id) => c_map_d.push(context_id as u8),
-				None => return Err(DecompressorError::ParseErrorContextMapDistances),
+				Some(context_id) => c_map.push(context_id as u8),
+				None => return Err(DecompressorError::ParseErrorContextMap),
 			}
 		}
 
@@ -903,9 +900,27 @@ impl<R: Read> Decompressor<R> {
 
 		println!("IMTF BIT = {:?}", imtf_bit);
 
-		Self::inverse_move_to_front_transform(&mut c_map_d);
+		Self::inverse_move_to_front_transform(&mut c_map);
 
-		Ok(State::ContextMapDistances(c_map_d))
+		Ok(c_map)
+	}
+
+	fn parse_context_map_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let n_trees = self.meta_block.header.n_trees_l.unwrap();
+		let len = (self.meta_block.header.n_bltypes_l.unwrap() * 64) as usize;
+		match self.parse_context_map(n_trees, len) {
+			Ok(c_map_l) => Ok(State::ContextMapLiterals(c_map_l)),
+			Err(e) => Err(e),
+		}
+	}
+
+	fn parse_context_map_distances(&mut self) -> result::Result<State, DecompressorError> {
+		let n_trees = self.meta_block.header.n_trees_d.unwrap();
+		let len = (self.meta_block.header.n_bltypes_d.unwrap() * 4) as usize;
+		match self.parse_context_map(n_trees, len) {
+			Ok(c_map_d) => Ok(State::ContextMapDistances(c_map_d)),
+			Err(e) => Err(e),
+		}
 	}
 
 	fn inverse_move_to_front_transform(v: &mut[u8]) {
@@ -1065,7 +1080,7 @@ impl<R: Read> Decompressor<R> {
 
 		match self.meta_block.blen_d {
 			None => {},
-			Some(0) => unimplemented!(),
+			Some(0) => unreachable!(), // Note: blen_d == 0 should have been caught before calling this method
 			Some(ref mut blen_d) => *blen_d -= 1,
 		}
 
@@ -1462,7 +1477,10 @@ impl<R: Read> Decompressor<R> {
 					println!("NTREESL = {:?}", n_trees_l);
 
 					self.state = if n_trees_l >= 2 {
-						unimplemented!();
+						match self.parse_context_map_literals() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						}
 					} else {
 						match self.parse_n_trees_d() {
 							Ok(state) => state,
@@ -1577,13 +1595,9 @@ impl<R: Read> Decompressor<R> {
 
 					self.state = match (self.meta_block.header.n_bltypes_l, self.meta_block.blen_l) {
 						(Some(0), _) => unreachable!(),
-						(Some(1), _) => match self.parse_insert_literals() {
-							Ok(state) => state,
-							Err(_) => return Err(DecompressorError::UnexpectedEOF),
-						},
-						// should parse block type code for literals here
+						// should parse block switch command for literals here
 						(_, Some(0)) => unimplemented!(),
-						(Some(_), Some(_)) =>  match self.parse_insert_literals() {
+						(Some(_), _) =>  match self.parse_insert_literals() {
 							Ok(state) => state,
 							Err(_) => return Err(DecompressorError::UnexpectedEOF),
 						},
@@ -1604,13 +1618,9 @@ impl<R: Read> Decompressor<R> {
 					} else {
 						match (self.meta_block.header.n_bltypes_d, self.meta_block.blen_d) {
 							(Some(0), _) => unreachable!(),
-							(Some(1), _) => match self.parse_distance_code() {
-								Ok(state) => state,
-								Err(_) => return Err(DecompressorError::UnexpectedEOF),
-							},
-							// should parse block type code for distances here
+							// should parse block switch command for distances here
 							(_, Some(0)) => unimplemented!(),
-							(Some(_), Some(_)) =>  match self.parse_distance_code() {
+							(Some(_), _) =>  match self.parse_distance_code() {
 								Ok(state) => state,
 								Err(_) => return Err(DecompressorError::UnexpectedEOF),
 							},
@@ -1638,8 +1648,8 @@ impl<R: Read> Decompressor<R> {
 					println!("Distance = {:?}", distance);
 
 					if (distance as usize) > self.header.window_size.unwrap() || (distance as usize) > self.count_output {
-						// need to read from static dictionary
-						// and do transformations
+						// @TODO need to read from static dictionary
+						//       and do transformations
 						unimplemented!();
 					}
 
