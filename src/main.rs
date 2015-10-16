@@ -1,7 +1,7 @@
 extern crate compression;
 
 fn main() {
-	use std::io::{ Cursor, Read };
+	use std::io::{ /*Cursor, */Read };
 	use compression::brotli::Decompressor;
 	use compression::bitreader::BitReader;
 
