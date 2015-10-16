@@ -3,12 +3,70 @@ use ::huffman;
 use ::huffman::tree::Tree;
 
 use std::collections::VecDeque;
+use std::cmp;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{ Display, Formatter };
 use std::io;
 use std::io::Read;
 use std::result;
+
+const LUT_0: [usize; 256] = [
+	 0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  4,  0,  0,  4,  0,  0,
+	 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+	 8, 12, 16, 12, 12, 20, 12, 16, 24, 28, 12, 12, 32, 12, 36, 12,
+	44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 32, 32, 24, 40, 28, 12,
+	12, 48, 52, 52, 52, 48, 52, 52, 52, 48, 52, 52, 52, 52, 52, 48,
+	52, 52, 52, 52, 52, 48, 52, 52, 52, 52, 52, 24, 12, 28, 12, 12,
+	12, 56, 60, 60, 60, 56, 60, 60, 60, 56, 60, 60, 60, 60, 60, 56,
+	60, 60, 60, 60, 60, 56, 60, 60, 60, 60, 60, 24, 12, 28, 12,  0,
+	 0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,
+	 0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,
+	 0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,
+	 0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,
+	 2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,
+	 2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,
+	 2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,
+	 2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3,  2,  3
+];
+
+const LUT_1: [usize; 256] =[
+ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1,
+ 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1,
+ 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+ 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 0,
+ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+];
+
+const LUT_2: [usize; 256] = [
+   0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+   2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+   2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+   3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+   3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+   3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+   3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+   4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+   4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+   4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+   4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+   6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7
+];
 
 #[derive(Debug, Clone, PartialEq)]
 struct RingBuffer<T> {
@@ -1062,7 +1120,7 @@ impl<R: Read> Decompressor<R> {
 				Some(symbol) => Ok(State::InsertAndCopyLength(symbol)),
 				None => Err(DecompressorError::ParseErrorInsertAndCopyLength),
 			},
-			_ => unimplemented!()
+			_ => unreachable!()
 		}
 	}
 
@@ -1141,13 +1199,35 @@ impl<R: Read> Decompressor<R> {
 		for i in 0..insert_length {
 			match self.meta_block.blen_l {
 				None => {},
-				Some(0) => unimplemented!(),
+				Some(0) => {
+					// @TODO read new block type and length (switch command)
+					unimplemented!()
+				},
 				Some(ref mut blen_l) => *blen_l -= 1,
 			}
 
-			// @TODO calculate correct context index
-			unimplemented!();
-			let index = 0;
+			let btype = self.meta_block.btype_l.unwrap() as usize;
+			let context_mode = self.meta_block.context_modes_literals.as_ref().unwrap()[btype];
+			let cid = match context_mode {
+				0 => {
+					let p1 = *self.literal_buf.nth(0).unwrap() as usize;
+
+					p1 & 0x3f
+				},
+				1 => unimplemented!(),
+				2 => {
+					let p1 = *self.literal_buf.nth(0).unwrap() as usize;
+					let p2 = *self.literal_buf.nth(1).unwrap() as usize;
+
+					LUT_0[p1] | LUT_1[p2]
+				},
+				3 => unimplemented!(),
+				_ => unreachable!(),
+			};
+
+			let index = self.meta_block.header.c_map_l.as_ref().unwrap()[btype * 64 + cid as usize] as usize;
+
+			println!("literal prefix code index = {:?}", index);
 
 			literals[i] = match self.meta_block.header.prefix_codes_literals.as_ref().unwrap()[index] {
 				PrefixCode::Simple(PrefixCodeSimple {
@@ -1168,7 +1248,9 @@ impl<R: Read> Decompressor<R> {
 					None => return Err(DecompressorError::ParseErrorInsertLiterals),
 				},
 				_ => unreachable!(),
-			}
+			};
+
+			self.literal_buf.push(literals[i]);
 		}
 
 		Ok(State::InsertLiterals(literals))
@@ -1246,8 +1328,6 @@ impl<R: Read> Decompressor<R> {
 				}
 			},
 			Some(dcode) if dcode <= (15 + self.meta_block.header.n_direct.unwrap() as DistanceCode) => dcode - 15,
-			// use NDIRECT and NPOSTFIX calculations, as described in the RFC, section 4.
-			// to calculate the decoded distance
 			Some(dcode) => {
 				let (n_direct, n_postfix) = (self.meta_block.header.n_direct.unwrap() as DistanceCode, self.meta_block.header.n_postfix.unwrap());
 				let ndistbits = 1 + ((dcode - (n_direct) - 16) >> (n_postfix + 1));
@@ -1285,7 +1365,7 @@ impl<R: Read> Decompressor<R> {
 
 		println!("(dc, db, d) = {:?}", (self.meta_block.distance_code, self.distance_buf.clone(), distance));
 
-		if self.meta_block.distance_code.unwrap() > 0 {
+		if self.meta_block.distance_code.unwrap() > 0 && distance as usize <= cmp::min(self.header.window_size.unwrap(), self.count_output) {
 			self.distance_buf.push(distance);
 		}
 
@@ -1299,23 +1379,27 @@ impl<R: Read> Decompressor<R> {
 		let distance = self.meta_block.distance.unwrap() as usize;
 		let ref output_window = self.output_window;
 
-		let mut window = vec![0; copy_length];
-		let l = if copy_length > distance {
-			distance
+		if distance <= cmp::min(count_output, window_size) {
+			let mut window = vec![0; copy_length];
+			let l = cmp::min(distance, copy_length);
+
+			for i in (count_output + window_size - distance)..(count_output + window_size - distance + l) {
+
+				window[i - (count_output + window_size - distance)] = output_window[i % window_size];
+			}
+
+			for i in l..copy_length {
+
+				window[i] = window[i % l];
+			}
+
+			Ok(State::CopyLiterals(window))
 		} else {
-			copy_length
-		};
 
-		for i in (count_output + window_size - distance)..(count_output + window_size - distance + l) {
-
-			window[i - (count_output + window_size - distance)] = output_window[i % window_size];
+			// @TODO handle distance for static dictionary
+			unimplemented!();
 		}
 
-		for i in l..copy_length {
-			window[i] = window[i % l];
-		}
-
-		Ok(State::CopyLiterals(window))
 	}
 
 
@@ -1363,6 +1447,8 @@ impl<R: Read> Decompressor<R> {
 				State::IsLast(true) => {
 					self.meta_block.header.is_last = Some(true);
 
+					println!("ISLAST = true");
+
 					self.state = match self.parse_is_last_empty() {
 						Ok(state) => state,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
@@ -1370,6 +1456,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::IsLast(false) => {
 					self.meta_block.header.is_last = Some(false);
+
+					println!("ISLAST = false");
 
 					self.state = match self.parse_m_nibbles() {
 						Ok(state) => state,
@@ -1379,10 +1467,15 @@ impl<R: Read> Decompressor<R> {
 				State::IsLastEmpty(true) => {
 					self.meta_block.header.is_last_empty = Some(true);
 
+					println!("ISLASTEMPTY = true");
+
+
 					self.state = State::StreamEnd;
 				},
 				State::IsLastEmpty(false) => {
 					self.meta_block.header.is_last_empty = Some(false);
+
+					println!("ISLASTEMPTY = false");
 
 					self.state = match self.parse_m_nibbles() {
 						Ok(state) => state,
@@ -1518,6 +1611,7 @@ impl<R: Read> Decompressor<R> {
 					println!("NBLTYPESL = {:?}", n_bltypes_l);
 
 					self.state = if n_bltypes_l >= 2 {
+						// @TODO parse prefix codes for block type and block count etc.
 						unimplemented!();
 					} else {
 						match self.parse_n_bltypes_i() {
@@ -1533,6 +1627,7 @@ impl<R: Read> Decompressor<R> {
 					println!("NBLTYPESI = {:?}", n_bltypes_i);
 
 					self.state = if n_bltypes_i >= 2 {
+						// @TODO parse prefix codes for block type and block count etc.
 						unimplemented!();
 					} else {
 						match self.parse_n_bltypes_d() {
@@ -1548,6 +1643,7 @@ impl<R: Read> Decompressor<R> {
 					println!("NBLTYPESD = {:?}", n_bltypes_d);
 
 					self.state = if n_bltypes_d >= 2 {
+						// @TODO parse prefix codes for block type and block count etc.
 						unimplemented!();
 					} else {
 						match self.parse_n_postfix() {
@@ -1685,6 +1781,7 @@ impl<R: Read> Decompressor<R> {
 							Ok(state) => state,
 							Err(_) => return Err(DecompressorError::UnexpectedEOF),
 						},
+						// @TODO parse block switch command for insert and copy length
 						(_, Some(0)) => unimplemented!(),
 						(Some(_), Some(_)) =>  match self.parse_insert_and_copy_length() {
 							Ok(state) => state,
@@ -1720,7 +1817,7 @@ impl<R: Read> Decompressor<R> {
 
 					self.state = match (self.meta_block.header.n_bltypes_l, self.meta_block.blen_l) {
 						(Some(0), _) => unreachable!(),
-						// should parse block switch command for literals here
+						// @TODO should parse block switch command for literals here
 						(_, Some(0)) => unimplemented!(),
 						(Some(_), _) =>  match self.parse_insert_literals() {
 							Ok(state) => state,
@@ -1732,7 +1829,6 @@ impl<R: Read> Decompressor<R> {
 				State::InsertLiterals(insert_literals) => {
 					for literal in insert_literals {
 						self.buf.push_front(literal);
-						self.literal_buf.push(literal);
 						self.output_window[self.count_output % self.header.window_size.unwrap() as usize] = literal;
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
@@ -1743,7 +1839,7 @@ impl<R: Read> Decompressor<R> {
 					} else {
 						match (self.meta_block.header.n_bltypes_d, self.meta_block.blen_d) {
 							(Some(0), _) => unreachable!(),
-							// should parse block switch command for distances here
+							// @TODO should parse block switch command for distances here
 							(_, Some(0)) => unimplemented!(),
 							(Some(_), _) =>  match self.parse_distance_code() {
 								Ok(state) => state,
@@ -1771,12 +1867,6 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.distance = Some(distance);
 
 					println!("Distance = {:?}", distance);
-
-					if (distance as usize) > self.header.window_size.unwrap() || (distance as usize) > self.count_output {
-						// @TODO need to read from static dictionary
-						//       and do transformations
-						unimplemented!();
-					}
 
 					self.state = match self.copy_literals() {
 						Ok(state) => state,
@@ -1860,13 +1950,7 @@ impl<R: Read> Read for Decompressor<R> {
 			}
 		}
 
-		let l = if self.buf.len() < buf.len() {
-
-			self.buf.len()
-		} else {
-
-			buf.len()
-		};
+		let l = cmp::min(self.buf.len(), buf.len());
 
 		for i in 0..l {
 
