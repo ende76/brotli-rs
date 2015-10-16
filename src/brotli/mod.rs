@@ -1146,6 +1146,7 @@ impl<R: Read> Decompressor<R> {
 			}
 
 			// @TODO calculate correct context index
+			unimplemented!();
 			let index = 0;
 
 			literals[i] = match self.meta_block.header.prefix_codes_literals.as_ref().unwrap()[index] {
@@ -1230,13 +1231,20 @@ impl<R: Read> Decompressor<R> {
 				Err(_) => return Err(DecompressorError::RingBufferError),
 			},
 			Some(d @ 4...9) => {
-				match (self.distance_buf.nth(0), 2 * (d % 2) - 1, (d - 2) >> 1) {
-					(Ok(distance), sign, d) => *distance + sign * d,
+				match (self.distance_buf.nth(0), 2 * (d as i64 % 2) - 1, (d - 2) >> 1) {
+					(Ok(distance), sign, d) => (*distance as i64 + (sign as i64 * d as i64)) as u32,
 					(Err(_), _, _) => return Err(DecompressorError::RingBufferError),
 				}
 			},
 			// reference distance_buf here, to get the decoded distance
-			Some(10...15) => unimplemented!(),
+			Some(d @ 10...15) => {
+				match (self.distance_buf.nth(1), 2 * (d as i64 % 2) - 1, (d - 8) >> 1) {
+					(Ok(distance), sign, d) => {
+						(*distance as i64 + (sign as i64 * d as i64)) as u32
+					},
+					(Err(_), _, _) => return Err(DecompressorError::RingBufferError),
+				}
+			},
 			Some(dcode) if dcode <= (15 + self.meta_block.header.n_direct.unwrap() as DistanceCode) => dcode - 15,
 			// use NDIRECT and NPOSTFIX calculations, as described in the RFC, section 4.
 			// to calculate the decoded distance
