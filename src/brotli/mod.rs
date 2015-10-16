@@ -857,9 +857,9 @@ impl<R: Read> Decompressor<R> {
 
 	fn parse_context_map(&mut self, n_trees: NTrees, len: usize) -> result::Result<ContextMap, DecompressorError> {
 		let rlemax = match self.in_stream.read_bit() {
-			Ok(false) => 0,
-			Ok(true) => match self.in_stream.read_u8_from_n_bits(4) {
-				Ok(my_u8) => my_u8 + 1,
+			Ok(false) => 0u16,
+			Ok(true) => match self.in_stream.read_u16_from_n_bits(4) {
+				Ok(my_u16) => my_u16 + 1,
 				Err(_) => return Err(DecompressorError::UnexpectedEOF),
 			},
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
@@ -867,7 +867,7 @@ impl<R: Read> Decompressor<R> {
 
 		println!("RLEMAX = {:?}", rlemax);
 
-		let alphabet_size = (rlemax + n_trees) as usize;
+		let alphabet_size = (rlemax + n_trees as u16) as usize;
 
 		println!("Alphabet Size = {:?}", alphabet_size);
 
@@ -879,15 +879,16 @@ impl<R: Read> Decompressor<R> {
 		println!("Prefix Code Context Map = {:?}", prefix_code);
 		println!("Prefix Tree Context Map = {:?}", prefix_tree);
 
-		if rlemax > 0 {
-			// @TODO properly decode run lengths below, as described in Brotli RFC, section 7.3.
-			unimplemented!();
-		}
+		// if rlemax > 0 {
+		// 	// @TODO properly decode run lengths below, as described in Brotli RFC, section 7.3.
+		// 	unimplemented!();
+		// }
 
 		let mut c_map = Vec::with_capacity(len);
 
 		for _ in 0..len {
 			match prefix_tree.lookup_symbol(&mut self.in_stream) {
+				Some(run_length_code) if run_length_code > 0 && run_length_code <= rlemax => unimplemented!(),
 				Some(context_id) => c_map.push(context_id as u8),
 				None => return Err(DecompressorError::ParseErrorContextMap),
 			}
