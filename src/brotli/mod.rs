@@ -633,14 +633,14 @@ impl<R: Read> Decompressor<R> {
 	fn parse_simple_prefix_code(&mut self, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
 		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
 
-		println!("Bit Width = {:?}", bit_width);
+		// println!("Bit Width = {:?}", bit_width);
 
 		let n_sym = match self.in_stream.read_u8_from_n_bits(2) {
 			Ok(my_u8) => (my_u8 + 1) as usize,
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		println!("NSYM = {:?}", n_sym);
+		// println!("NSYM = {:?}", n_sym);
 
 		let tree_select = match n_sym {
 			4 => match self.in_stream.read_bit() {
@@ -658,7 +658,7 @@ impl<R: Read> Decompressor<R> {
 			}
 		}
 
-		println!("Symbols = {:?}", symbols);
+		// println!("Symbols = {:?}", symbols);
 
 		let code_lengths = match (n_sym, tree_select) {
 			(1, None) => vec![],
@@ -681,8 +681,8 @@ impl<R: Read> Decompressor<R> {
 			_ => unreachable!(),
 		};
 
-		println!("Sorted Symbols = {:?}", symbols);
-		println!("Code Lengths = {:?}", code_lengths);
+		// println!("Sorted Symbols = {:?}", symbols);
+		// println!("Code Lengths = {:?}", code_lengths);
 
 		Ok((PrefixCode::new_simple(Some(n_sym as u8), Some(symbols.clone()), tree_select),
             huffman::codes_from_lengths_and_symbols(code_lengths, &symbols)))
@@ -717,7 +717,7 @@ impl<R: Read> Decompressor<R> {
 			codes
 		};
 
-		println!("Bit Lengths Code {:?}", bit_lengths_code);
+		// println!("Bit Lengths Code {:?}", bit_lengths_code);
 
 		let mut code_lengths = vec![0; symbols.len()];
 		let mut sum = 0usize;
@@ -743,18 +743,18 @@ impl<R: Read> Decompressor<R> {
 			}
 		}
 
-		println!("Code Lengths = {:?}", code_lengths);
-		println!("Symbols = {:?}", symbols);
+		// println!("Code Lengths = {:?}", code_lengths);
+		// println!("Symbols = {:?}", symbols);
 
 		code_lengths = vec![code_lengths[4], code_lengths[0], code_lengths[1], code_lengths[2], code_lengths[3], code_lengths[5], code_lengths[7], code_lengths[9], code_lengths[10], code_lengths[11], code_lengths[12], code_lengths[13], code_lengths[14], code_lengths[15], code_lengths[16], code_lengths[17], code_lengths[8], code_lengths[6]];
 		symbols = (0..18).collect::<Vec<_>>();
 
-		println!("Code Lengths = {:?}", code_lengths);
-		println!("Symbols = {:?}", symbols);
+		// println!("Code Lengths = {:?}", code_lengths);
+		// println!("Symbols = {:?}", symbols);
 
 		let prefix_code_code_lengths = huffman::codes_from_lengths_and_symbols(code_lengths, &symbols);
 
-		println!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths);
+		// println!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths);
 
 		let mut actual_code_lengths = Vec::new();
 		let mut sum = 0usize;
@@ -765,7 +765,7 @@ impl<R: Read> Decompressor<R> {
 		loop {
 			match prefix_code_code_lengths.lookup_symbol(&mut self.in_stream) {
 				Some(new_code_length @ 0...15) => {
-					print!(" {:?},", (actual_code_lengths.len() as u8) as char);
+					// print!(" {:?},", (actual_code_lengths.len() as u8) as char);
 
 					actual_code_lengths.push(new_code_length as usize);
 					last_symbol = Some(new_code_length);
@@ -877,9 +877,9 @@ impl<R: Read> Decompressor<R> {
 			};
 		}
 
-		println!("");
+		// println!("");
 
-		println!("Actual Code Lengths = {:?}", actual_code_lengths);
+		// println!("Actual Code Lengths = {:?}", actual_code_lengths);
 
 		Ok((PrefixCode::Complex,
 			huffman::codes_from_lengths(actual_code_lengths)))
@@ -891,7 +891,7 @@ impl<R: Read> Decompressor<R> {
 			Err(e) => return Err(e),
 		};
 
-		println!("Prefix Code Kind = {:?}", prefix_code_kind);
+		// println!("Prefix Code Kind = {:?}", prefix_code_kind);
 
 		match prefix_code_kind {
 			PrefixCodeKind::Complex(h_skip) => self.parse_complex_prefix_code(h_skip, alphabet_size),
@@ -949,19 +949,19 @@ impl<R: Read> Decompressor<R> {
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		println!("RLEMAX = {:?}", rlemax);
+		// println!("RLEMAX = {:?}", rlemax);
 
 		let alphabet_size = (rlemax + n_trees as u16) as usize;
 
-		println!("Alphabet Size = {:?}", alphabet_size);
+		// println!("Alphabet Size = {:?}", alphabet_size);
 
-		let (prefix_code, prefix_tree) = match self.parse_prefix_code(alphabet_size) {
+		let (_, prefix_tree) = match self.parse_prefix_code(alphabet_size) {
 			Ok(v) => v,
 			Err(e) => return Err(e),
 		};
 
-		println!("Prefix Code Context Map = {:?}", prefix_code);
-		println!("Prefix Tree Context Map = {:?}", prefix_tree);
+		// println!("Prefix Code Context Map = {:?}", prefix_code);
+		// println!("Prefix Tree Context Map = {:?}", prefix_tree);
 
 		let mut c_map = Vec::with_capacity(len);
 		let mut c_pushed = 0;
@@ -969,14 +969,14 @@ impl<R: Read> Decompressor<R> {
 		while c_pushed < len {
 			match prefix_tree.lookup_symbol(&mut self.in_stream) {
 				Some(run_length_code) if run_length_code > 0 && run_length_code <= rlemax => {
-					println!("run length code = {:?}", run_length_code);
+					// println!("run length code = {:?}", run_length_code);
 
 					let repeat = match self.in_stream.read_u16_from_n_bits(run_length_code as usize) {
 						Ok(my_u16) => (1 << run_length_code) + my_u16,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 
-					println!("repeat = {:?}", repeat);
+					// println!("repeat = {:?}", repeat);
 
 					for _ in 0..repeat {
 						c_map.push(0);
@@ -988,14 +988,14 @@ impl<R: Read> Decompressor<R> {
 					}
 				},
 				Some(context_id) => {
-					println!("context id = {:?}", context_id - rlemax);
+					// println!("context id = {:?}", context_id - rlemax);
 					c_map.push((context_id - rlemax) as u8);
 					c_pushed += 1;
 				},
 				None => return Err(DecompressorError::ParseErrorContextMap),
 			}
 
-			println!("{:?}", (c_pushed, len));
+			// println!("{:?}", (c_pushed, len));
 		}
 
 		let imtf_bit = match self.in_stream.read_bit() {
@@ -1003,9 +1003,12 @@ impl<R: Read> Decompressor<R> {
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		println!("IMTF BIT = {:?}", imtf_bit);
+		// println!("IMTF BIT = {:?}", imtf_bit);
 
-		Self::inverse_move_to_front_transform(&mut c_map);
+		if imtf_bit {
+
+			Self::inverse_move_to_front_transform(&mut c_map);
+		}
 
 		Ok(c_map)
 	}
@@ -1090,7 +1093,7 @@ impl<R: Read> Decompressor<R> {
 		insert_length_code += 0x07 & (self.meta_block.insert_and_copy_length.unwrap() as u8 >> 3);
 		copy_length_code += 0x07 & self.meta_block.insert_and_copy_length.unwrap() as u8;
 
-		println!("(insert code, copy code) = {:?}", (insert_length_code, copy_length_code));
+		// println!("(insert code, copy code) = {:?}", (insert_length_code, copy_length_code));
 
 		let (mut insert_length, extra_bits_insert): (InsertLength, _) = match insert_length_code {
 			0...5 => (insert_length_code as InsertLength, 0),
@@ -1174,7 +1177,7 @@ impl<R: Read> Decompressor<R> {
 
 			let index = self.meta_block.header.c_map_l.as_ref().unwrap()[btype * 64 + cid as usize] as usize;
 
-			println!("literal prefix code index = {:?}", index);
+			// println!("literal prefix code index = {:?}", index);
 
 			literals[i] = match self.meta_block.header.prefix_codes_literals.as_ref().unwrap()[index] {
 				PrefixCode::Simple(PrefixCodeSimple {
@@ -1226,8 +1229,8 @@ impl<R: Read> Decompressor<R> {
 
 		let index = self.meta_block.header.c_map_d.as_ref().unwrap()[self.meta_block.btype_d.unwrap() as usize * 4 + cid as usize] as usize;
 
-		println!("distance prefix code index = {:?}", index);
-		println!("distance prefix code = {:?}", self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index]);
+		// println!("distance prefix code index = {:?}", index);
+		// println!("distance prefix code = {:?}", self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index]);
 
 		let distance_code = match self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index] {
 			PrefixCode::Simple(PrefixCodeSimple {
@@ -1279,38 +1282,38 @@ impl<R: Read> Decompressor<R> {
 				let (n_direct, n_postfix) = (self.meta_block.header.n_direct.unwrap() as DistanceCode, self.meta_block.header.n_postfix.unwrap());
 				let ndistbits = 1 + ((dcode - (n_direct) - 16) >> (n_postfix + 1));
 
-				println!("NDISTBITS = {:?}", ndistbits);
+				// println!("NDISTBITS = {:?}", ndistbits);
 
 				let dextra = match self.in_stream.read_u32_from_n_bits(ndistbits as usize) {
 					Ok(my_u32) => my_u32,
 					Err(_) => return Err(DecompressorError::UnexpectedEOF),
 				};
 
-				println!("DEXTRA = {:?}", dextra);
+				// println!("DEXTRA = {:?}", dextra);
 
 				let hcode = (dcode - n_direct - 16) >> n_postfix;
 
-				println!("HCODE = {:?}", hcode);
+				// println!("HCODE = {:?}", hcode);
 
 				let postfix_mask = (1 << n_postfix) - 1;
 				let lcode = (dcode - n_direct - 16) & postfix_mask;
 
-				println!("LCODE = {:?}", lcode);
+				// println!("LCODE = {:?}", lcode);
 
 				let offset = ((2 + (hcode & 1)) << ndistbits) - 4;
 
-				println!("Offset = {:?}", offset);
+				// println!("Offset = {:?}", offset);
 
 				let distance = ((offset + dextra) << n_postfix) + lcode + n_direct + 1;
 
-				println!("Distance = {:?}", distance);
+				// println!("Distance = {:?}", distance);
 
 				distance
 			},
 			None => unreachable!()
 		};
 
-		println!("(dc, db, d) = {:?}", (self.meta_block.distance_code, self.distance_buf.clone(), distance));
+		// println!("(dc, db, d) = {:?}", (self.meta_block.distance_code, self.distance_buf.clone(), distance));
 
 		if self.meta_block.distance_code.unwrap() > 0 && distance as usize <= cmp::min(self.header.window_size.unwrap(), self.count_output) {
 			self.distance_buf.push(distance);
@@ -1363,8 +1366,8 @@ impl<R: Read> Decompressor<R> {
 				return Err(DecompressorError::InvalidTransformId);
 			}
 
-			println!("base word = {:?}", String::from_utf8(Vec::from(base_word)));
-			println!("transform id = {:?}", transform_id);
+			// println!("base word = {:?}", String::from_utf8(Vec::from(base_word)));
+			// println!("transform id = {:?}", transform_id);
 
 			let transformed_word = match transform_id {
 				0 => base_word,
@@ -1404,7 +1407,7 @@ impl<R: Read> Decompressor<R> {
 					self.header.window_size = Some((1 << wbits) - 16);
 					self.output_window = vec![0; self.header.window_size.unwrap()];
 
-					println!("(WBITS, Window Size) = {:?}", (wbits, self.header.window_size));
+					// println!("(WBITS, Window Size) = {:?}", (wbits, self.header.window_size));
 
 					self.state = State::HeaderEnd;
 				},
@@ -1422,7 +1425,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsLast(true) => {
 					self.meta_block.header.is_last = Some(true);
 
-					println!("ISLAST = true");
+					// println!("ISLAST = true");
 
 					self.state = match self.parse_is_last_empty() {
 						Ok(state) => state,
@@ -1432,7 +1435,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsLast(false) => {
 					self.meta_block.header.is_last = Some(false);
 
-					println!("ISLAST = false");
+					// println!("ISLAST = false");
 
 					self.state = match self.parse_m_nibbles() {
 						Ok(state) => state,
@@ -1442,7 +1445,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsLastEmpty(true) => {
 					self.meta_block.header.is_last_empty = Some(true);
 
-					println!("ISLASTEMPTY = true");
+					// println!("ISLASTEMPTY = true");
 
 
 					self.state = State::StreamEnd;
@@ -1450,7 +1453,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsLastEmpty(false) => {
 					self.meta_block.header.is_last_empty = Some(false);
 
-					println!("ISLASTEMPTY = false");
+					// println!("ISLASTEMPTY = false");
 
 					self.state = match self.parse_m_nibbles() {
 						Ok(state) => state,
@@ -1493,7 +1496,7 @@ impl<R: Read> Decompressor<R> {
 				State::MSkipBytes(m_skip_bytes) => {
 					self.meta_block.header.m_skip_bytes = Some(m_skip_bytes);
 
-					println!("MSKIPBYTES = {:?}", m_skip_bytes);
+					// println!("MSKIPBYTES = {:?}", m_skip_bytes);
 
 					self.state = match self.parse_m_skip_len() {
 						Ok(state) => state,
@@ -1503,7 +1506,7 @@ impl<R: Read> Decompressor<R> {
 				State::MSkipLen(m_skip_len) => {
 					self.meta_block.header.m_skip_len = Some(m_skip_len);
 
-					println!("MSKIPLEN = {:?}", m_skip_len);
+					// println!("MSKIPLEN = {:?}", m_skip_len);
 
 					match self.in_stream.read_u8_from_byte_tail() {
 						Ok(0) => {},
@@ -1521,7 +1524,7 @@ impl<R: Read> Decompressor<R> {
 				State::MLen(m_len) => {
 					self.meta_block.header.m_len = Some(m_len);
 
-					println!("MLEN = {:?}", m_len);
+					// println!("MLEN = {:?}", m_len);
 
 					self.state = match (&self.meta_block.header.is_last.unwrap(), &self.header.bltype_codes) {
 						(&false, _) => match self.parse_is_uncompressed() {
@@ -1541,7 +1544,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsUncompressed(true) => {
 					self.meta_block.header.is_uncompressed = Some(true);
 
-					println!("UNCOMPRESSED = true");
+					// println!("UNCOMPRESSED = true");
 
 					match self.in_stream.read_u8_from_byte_tail() {
 						Ok(0) => {},
@@ -1567,7 +1570,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsUncompressed(false) => {
 					self.meta_block.header.is_uncompressed = Some(false);
 
-					println!("UNCOMPRESSED = false");
+					// println!("UNCOMPRESSED = false");
 
 					unimplemented!();
 				},
@@ -1583,7 +1586,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.n_bltypes_l = Some(n_bltypes_l);
 					self.meta_block.btype_l = Some(0);
 
-					println!("NBLTYPESL = {:?}", n_bltypes_l);
+					// println!("NBLTYPESL = {:?}", n_bltypes_l);
 
 					self.state = if n_bltypes_l >= 2 {
 						// @TODO parse prefix codes for block type and block count etc.
@@ -1599,7 +1602,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.n_bltypes_i = Some(n_bltypes_i);
 					self.meta_block.btype_i = Some(0);
 
-					println!("NBLTYPESI = {:?}", n_bltypes_i);
+					// println!("NBLTYPESI = {:?}", n_bltypes_i);
 
 					self.state = if n_bltypes_i >= 2 {
 						// @TODO parse prefix codes for block type and block count etc.
@@ -1615,7 +1618,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.n_bltypes_d = Some(n_bltypes_d);
 					self.meta_block.btype_d = Some(0);
 
-					println!("NBLTYPESD = {:?}", n_bltypes_d);
+					// println!("NBLTYPESD = {:?}", n_bltypes_d);
 
 					self.state = if n_bltypes_d >= 2 {
 						// @TODO parse prefix codes for block type and block count etc.
@@ -1630,7 +1633,7 @@ impl<R: Read> Decompressor<R> {
 				State::NPostfix(n_postfix) => {
 					self.meta_block.header.n_postfix = Some(n_postfix);
 
-					println!("NPOSTFIX = {:?}", n_postfix);
+					// println!("NPOSTFIX = {:?}", n_postfix);
 
 					self.state = match self.parse_n_direct() {
 						Ok(state) => state,
@@ -1640,7 +1643,7 @@ impl<R: Read> Decompressor<R> {
 				State::NDirect(n_direct) => {
 					self.meta_block.header.n_direct = Some(n_direct);
 
-					println!("NDIRECT = {:?}", n_direct);
+					// println!("NDIRECT = {:?}", n_direct);
 
 					self.state = match self.parse_context_modes_literals() {
 						Ok(state) => state,
@@ -1650,7 +1653,7 @@ impl<R: Read> Decompressor<R> {
 				State::ContextModesLiterals(context_modes) => {
 					self.meta_block.context_modes_literals = Some(context_modes);
 
-					println!("Context Modes Literals = {:?}", self.meta_block.context_modes_literals);
+					// println!("Context Modes Literals = {:?}", self.meta_block.context_modes_literals);
 
 					self.state = match self.parse_n_trees_l() {
 						Ok(state) => state,
@@ -1661,7 +1664,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.n_trees_l = Some(n_trees_l);
 					self.meta_block.header.c_map_l = Some(vec![0; 64 * self.meta_block.header.n_bltypes_l.unwrap() as usize]);
 
-					println!("NTREESL = {:?}", n_trees_l);
+					// println!("NTREESL = {:?}", n_trees_l);
 
 					self.state = if n_trees_l >= 2 {
 						match self.parse_context_map_literals() {
@@ -1678,7 +1681,7 @@ impl<R: Read> Decompressor<R> {
 				State::ContextMapLiterals(c_map_l) => {
 					self.meta_block.header.c_map_l = Some(c_map_l);
 
-					println!("CMAPL = {:?}", self.meta_block.header.c_map_l);
+					// println!("CMAPL = {:?}", self.meta_block.header.c_map_l);
 
 					self.state = match self.parse_n_trees_d() {
 						Ok(state) => state,
@@ -1689,7 +1692,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.n_trees_d = Some(n_trees_d);
 					self.meta_block.header.c_map_d = Some(vec![0; 4 * self.meta_block.header.n_bltypes_d.unwrap() as usize]);
 
-					println!("NTREESD = {:?}", n_trees_d);
+					// println!("NTREESD = {:?}", n_trees_d);
 
 					self.state = if n_trees_d >= 2 {
 						match self.parse_context_map_distances() {
@@ -1706,7 +1709,7 @@ impl<R: Read> Decompressor<R> {
 				State::ContextMapDistances(c_map_d) => {
 					self.meta_block.header.c_map_d = Some(c_map_d);
 
-					println!("CMAPD = {:?}", self.meta_block.header.c_map_d);
+					// println!("CMAPD = {:?}", self.meta_block.header.c_map_d);
 
 					self.state = match self.parse_prefix_codes_literals() {
 						Ok(state) => state,
@@ -1719,8 +1722,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_codes_literals = Some(prefix_codes);
 					self.meta_block.prefix_trees_literals = Some(prefix_trees);
 
-					println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_codes_literals);
-					println!("Prefix Tree literals = {:?}", self.meta_block.prefix_trees_literals);
+					// println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_codes_literals);
+					// println!("Prefix Tree literals = {:?}", self.meta_block.prefix_trees_literals);
 
 					self.state = match self.parse_prefix_code_insert_and_copy_lengths() {
 						Ok(state) => state,
@@ -1731,8 +1734,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_code_insert_and_copy_lengths = Some(prefix_code);
 					self.meta_block.prefix_tree_insert_and_copy_lengths = Some(prefix_tree);
 
-					println!("Prefix Code Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
-					println!("Prefix Tree Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_insert_and_copy_lengths);
+					// println!("Prefix Code Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_insert_and_copy_lengths);
+					// println!("Prefix Tree Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_insert_and_copy_lengths);
 
 					self.state = match self.parse_prefix_codes_distances() {
 						Ok(state) => state,
@@ -1745,8 +1748,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_codes_distances = Some(prefix_codes);
 					self.meta_block.prefix_trees_distances = Some(prefix_trees);
 
-					println!("Prefix Codes Distances = {:?}", self.meta_block.header.prefix_codes_distances);
-					println!("Prefix Trees Distances = {:?}", self.meta_block.prefix_trees_distances);
+					// println!("Prefix Codes Distances = {:?}", self.meta_block.header.prefix_codes_distances);
+					// println!("Prefix Trees Distances = {:?}", self.meta_block.prefix_trees_distances);
 
 					self.state = State::DataMetaBlockBegin;
 				},
@@ -1773,7 +1776,7 @@ impl<R: Read> Decompressor<R> {
 						_ => None,
 					};
 
-					println!("Insert And Copy Length = {:?}", insert_and_copy_length);
+					// println!("Insert And Copy Length = {:?}", insert_and_copy_length);
 
 					self.state = match self.decode_insert_and_copy_length() {
 						Ok(state) => state,
@@ -1788,7 +1791,7 @@ impl<R: Read> Decompressor<R> {
 						},
 					};
 
-					println!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length);
+					// println!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length);
 
 					self.state = match (self.meta_block.header.n_bltypes_l, self.meta_block.blen_l) {
 						(Some(0), _) => unreachable!(),
@@ -1831,7 +1834,7 @@ impl<R: Read> Decompressor<R> {
 				State::DistanceCode(distance_code) => {
 					self.meta_block.distance_code = Some(distance_code);
 
-					println!("Distance Code = {:?}", distance_code);
+					// println!("Distance Code = {:?}", distance_code);
 
 					self.state = match self.decode_distance() {
 						Ok(state) => state,
@@ -1841,7 +1844,7 @@ impl<R: Read> Decompressor<R> {
 				State::Distance(distance) => {
 					self.meta_block.distance = Some(distance);
 
-					println!("Distance = {:?}", distance);
+					// println!("Distance = {:?}", distance);
 
 					self.state = match self.copy_literals() {
 						Ok(state) => state,
@@ -1857,7 +1860,7 @@ impl<R: Read> Decompressor<R> {
 						self.meta_block.count_output += 1;
 					}
 
-					println!("output = {:?}", self.buf);
+					// println!("output = {:?}", self.buf);
 
 
 					if (self.meta_block.header.m_len.unwrap() as usize) < self.meta_block.count_output {
@@ -1874,11 +1877,11 @@ impl<R: Read> Decompressor<R> {
 					};
 
 
-					let output_so_far = String::from_utf8(self.output_window.clone().into_iter().filter(|&b| b > 0).collect::<Vec<_>>()).unwrap();
-					let expected = String::from("znxcvnmz,xvnm.,zxcnv.,xcn.z,vn.zvn.zxcvn.,zxcn.vn.v,znm.,vnzx.,vnzxc.vn.z,vnz.,nv.z,nvmzxc,nvzxcvcnm.,vczxvnzxcnvmxc.zmcnvzm.,nvmc,nzxmc,vn.mnnmzxc,vnxcnmv,znvzxcnmv,.xcnvm,zxcnzxv.zx,qweryweurqioweupropqwutioweupqrioweutiopweuriopweuriopqwurioputiopqwuriowuqerioupqweropuweropqwurweuqriopuropqwuriopuqwriopuqweopruioqweurqweuriouqweopruioupqiytioqtyiowtyqptypryoqweutioioqtweqruowqeytiowquiourowetyoqwupiotweuqiorweuqroipituqwiorqwtioweuriouytuioerytuioweryuitoweytuiweyuityeruirtyuqriqweuropqweiruioqweurioqwuerioqwyuituierwotueryuiotweyrtuiwertyioweryrueioqptyioruyiopqwtjkasdfhlafhlasdhfjklashjkfhasjklfhklasjdfhklasdhfjkalsdhfklasdhjkflahsjdkfhklasfhjkasdfhasfjkasdhfklsdhalghhaf;hdklasfhjklashjklfasdhfasdjklfhsdjklafsd;hkldadfjjklasdhfjasddfjklfhakjklasdjfkl;asdjfasfljasdfhjklasdfhjkaghjkashf;djfklasdjfkljasdklfjklasdjfkljasdfkljaklfj");
+					// let output_so_far = String::from_utf8(self.output_window.clone().into_iter().filter(|&b| b > 0).collect::<Vec<_>>()).unwrap();
+					// let expected = String::from("znxcvnmz,xvnm.,zxcnv.,xcn.z,vn.zvn.zxcvn.,zxcn.vn.v,znm.,vnzx.,vnzxc.vn.z,vnz.,nv.z,nvmzxc,nvzxcvcnm.,vczxvnzxcnvmxc.zmcnvzm.,nvmc,nzxmc,vn.mnnmzxc,vnxcnmv,znvzxcnmv,.xcnvm,zxcnzxv.zx,qweryweurqioweupropqwutioweupqrioweutiopweuriopweuriopqwurioputiopqwuriowuqerioupqweropuweropqwurweuqriopuropqwuriopuqwriopuqweopruioqweurqweuriouqweopruioupqiytioqtyiowtyqptypryoqweutioioqtweqruowqeytiowquiourowetyoqwupiotweuqiorweuqroipituqwiorqwtioweuriouytuioerytuioweryuitoweytuiweyuityeruirtyuqriqweuropqweiruioqweurioqwuerioqwyuituierwotueryuiotweyrtuiwertyioweryrueioqptyioruyiopqwtjkasdfhlafhlasdhfjklashjkfhasjklfhklasjdfhklasdhfjkalsdhfklasdhjkflahsjdkfhklasfhjkasdfhasfjkasdhfklsdhalghhaf;hdklasfhjklashjklfasdhfasdjklfhsdjklafsd;hkldadfjjklasdhfjasddfjklfhakjklasdjfkl;asdjfasfljasdfhjklasdfhjkaghjkashf;djfklasdjfkljasdklfjklasdjfkljasdfkljaklfj");
 
-					println!("{}", &expected[0..output_so_far.len()]);
-					println!("{}", output_so_far);
+					// println!("{}", &expected[0..output_so_far.len()]);
+					// println!("{}", output_so_far);
 
 					return Ok(self.buf.len());
 				},
@@ -2005,7 +2008,7 @@ const BROTLI_DICTIONARY_SIZE_BITS_BY_LENGTH: [usize; 25] = [
 	 7,  6,  6,  5,  5,
 ];
 
-const BROTLI_DICTIONARY: [u8; 122784] = [
+pub const BROTLI_DICTIONARY: [u8; 122784] = [
 	0x74, 0x69, 0x6d, 0x65, 0x64, 0x6f, 0x77, 0x6e, 0x6c, 0x69, 0x66, 0x65, 0x6c,
 	0x65, 0x66, 0x74, 0x62, 0x61, 0x63, 0x6b, 0x63, 0x6f, 0x64, 0x65, 0x64, 0x61,
 	0x74, 0x61, 0x73, 0x68, 0x6f, 0x77, 0x6f, 0x6e, 0x6c, 0x79, 0x73, 0x69, 0x74,
