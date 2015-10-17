@@ -1,0 +1,221 @@
+Analysis of quickfox_repeated.compressed:
+0x5b 0xff 0xaf 0x02 0xc0 0x22 0x79 0x5c 0xfb 0x5a 0x8c 0x42 0x3b 0xf4 0x25 0x55 0x19 0x5a 0x92 0x99 0xb1 0x35 c81
+0x9e 0x9e 0x0a 0x7b 0x4b 0x90 0xb9 0x3c 0x98 0xc8 0x09 0x40 0xf3 0xe6 0xd9 0x4d 0xe4 0x6d 0x65 0x1b 0x27 0x87 0x13 0x5f
+0xa6 0xe9 0x30 0x96 0x7b 0x3c 0x15 0xd8 0x53 0x1c
+
+Brotli Stream Header
+====================
+0x5b = 0101 1011
+
+1011                # WBITS => decodes to 22
+                    # window size = 1 << WBITS - 16 = 4194288
+
+Brotli Meta-Block Header
+========================
+[0101]
+
+1                   # ISLAST => true => this is the last meta Meta-Block
+0                   # ISLASTEMPTY => false => block is not empty
+01                  # MNIBBLES => 1 => MNIBBLES == 5 nibbles to represent the uncompressed length
+
+0x02 0xaf 0xff  = 0000 0010 1010 1111 1111 1111
+
+0010 1010 1111 1111 1111
+                    # MLEN - 1 == 176127 => MLEN == 176128
+[0000]
+
+0                   # NBLTYPESL => 1
+0                   # NBLTYPESI => 1
+0                   # NBLTYPESD => 1
+
+0xc0 = 1100 0000 [0]
+
+00                  # NPOSTFIX => 0
+0000                # NDIRECT => 0
+
+10                  # Context Mode for literal block type 0 => 2
+
+0x22 = 0010 0010 [1]
+
+1010                # NTREESL => 5-8 + 2 extra bits
+00                  # 2 extra bits == 0 => NTREESL = 5
+
+0x79 = 0111 1001 [001]
+
+01001               # RLEMAX == 5
+10                  # HSKIP = 2
+                    # => code lengths [1: 0, 2: 0]
+1110                # => code lengths [1: 0, 2: 0, 3: 1] sum = 32 >> 1 = 16
+
+0x5c = 0101 1100
+
+00                  # => code lengths [1: 0, 2: 0, 3: 1, 4: 0]
+1110                # => code lengths [1: 0, 2: 0, 3: 1, 4: 0, 0: 1] sum = 16 + 32 >> 1 = 16 + 16 = 32 => done with code lengths
+
+                    # codelengths = [0: 1, 1: 0, 2: 0, 3: 1, 4..17: 0]
+
+[01]
+
+1                   # codelength symbol == 3 => codelengths == [3] => sum = 32768 >> 3 = 4096
+0                   # codelength symbol == 0 => codelengths == [3, 0] => sum = 4096
+
+0xfb = 1111 1011
+1                   # codelength symbol == 3 => codelengths == [3, 0, 3] => sum = 4096 + 32768 >> 3 = 4096 + 4096 = 8192
+1                   # codelength symbol == 3 => codelengths == [3, 0, 3, 3] => sum = 8192 + 32768 >> 3 = 8192 + 4096 = 12288
+0                   # codelength symbol == 0 => codelengths == [3, 0, 3, 3, 0] => sum = 12288
+1                   # codelength symbol == 3 => codelengths == [3, 0, 3, 3, 0, 3] => sum = 12288 + 32768 >> 3 = 12288 + 4096 = 16384
+1                   # codelength symbol == 3 => codelengths == [3, 0, 3, 3, 0, 3, 3] => sum = 16384 + 32768 >> 3 = 16384 + 4096 = 20480
+1                   # codelength symbol == 3 => codelengths == [3, 0, 3, 3, 0, 3, 3, 3] => sum = 20480 + 32768 >> 3 = 20480 + 4096 = 24576
+1                   # codelength symbol == 3 => codelengths == [3, 0, 3, 3, 0, 3, 3, 3, 3] => sum = 24576 + 32768 >> 3 = 24576 + 4096 = 28672
+1                   # codelength symbol == 3 => codelengths == [3, 0, 3, 3, 0, 3, 3, 3, 3, 3] => sum = 28672 + 32768 >> 3 = 28672 + 4096 = 32768
+
+0x5a = 0101 1010
+
+010                 # run length code = 3 + 3 extra bits
+011                 # 3 extra bits == 3 => repeat a zero 2^3 + 3 = 11 times
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+0x8c = 1000 1100 [01]
+100                 # symbol == 6 => value == 1
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+
+011                 # run length code 5 => 32 + 5 extra bits
+
+0x42 = 0100 0010 [1000]
+
+01000               # 5 extra bits == 8 => repeat a zero 2^5 + 8 = 40 times
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0,]
+
+100                 # symbol == 6 => value == 1
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 1,]
+
+001                 # run length code = 2 + 2 extra bits
+
+0x3b = 0011 1011 [0]
+
+10                  # 2 extra bits = 2 => repeat a zero 2^2 + 2 = 6 times
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 1, 0, 0, 0, 0, 0, 0,]
+101                 # symbol == 7 => value == 2
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 1, 0, 0, 0, 0, 0, 0, 2,]
+110                 # symbol == 8 => value == 3
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 1, 0, 0, 0, 0, 0, 0, 2,
+                    #                         3,]
+
+0xf4 = 1111 0100 [0]
+
+000                 # symbol == 0 => value == 0
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 1, 0, 0, 0, 0, 0, 0, 2,
+                    #                         3, 0,]
+101                 # symbol == 7 => value == 2
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 1, 0, 0, 0, 0, 0, 0, 2,
+                    #                         3, 0, 2, ]
+111                 # symbol == 9 => value == 4
+                    # context map literals = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    #                         0, 0, 1, 0, 0, 0, 0, 0, 0, 2,
+                    #                         3, 0, 2, 4]
+                    # 64 is the size of the literal context map for NBLTYPESL == 1
+
+0x5b 0xff 0xaf 0x02 0xc0 0x22 0x79 0x5c 0xfb 0x5a 0x8c 0x42 0x3b 0xf4 0x25 0x55 0x19 0x5a 0x92 0x99 0xb1 0x35 0xc8 0x19
+0x9e 0x9e 0x0a 0x7b 0x4b 0x90 0xb9 0x3c 0x98 0xc8 0x09 0x40 0xf3 0xe6 0xd9 0x4d 0xe4 0x6d 0x65 0x1b 0x27 0x87 0x13 0x5f
+0xa6 0xe9 0x30 0x96 0x7b 0x3c 0x15 0xd8 0x53 0x1c
+
+0x25 = 0010 0101
+
+1                   # IMTF => true => we do an inverse move to front transformation on the context map
+                    # we assume that our implementation of inverse_move_to_front_transform() works correctly
+
+0                   # NTREESD => 1
+01                  # Simple Prefix Code #1
+10                  # NSYM - 1 == 2 => NSYM == 3
+
+0x55 = 0101 0101 [00]
+0101 0100           # Symbol #1 => 0x54 == 84
+
+0x19 = 0001 1001 [01]
+0110 0101           # Symbol #2 => 0x65 == 101
+
+0x5a = 0101 1010 [00]
+0110 1000           # Symbol #3 => 0x68 == 104
+
+0x92 = 1001 0010 [01]
+
+01                  # Simple Prefix Code
+10                  # NSYM - 1 == 2 => NSYM == 3
+
+0x99 = 1001 1001 [1001 00]
+0110 0100           # Symbol #1 => 0x64 == 100
+
+0xb1 = 1011 0001 [1001 10]
+0110 0110           # Symbol #2 => 0x66 == 102
+
+0x35 = 0011 0101 [1011 00]
+0110 1100           # Symbol #3 => 0x6c == 108
+
+[0011 01]
+01                  # Simple Prefix Code
+11                  # NSYM - 1 == 3 => NSYM == 4
+
+0xc8 = 1100 1000 [00]
+0010 0000           # Symbol #1 => 0x20 == 32
+
+0x19 = 0001 1001 [11]
+0110 0111           # Symbol #2 => 0x67 => 103
+
+0x9e = 1001 1110 [00]
+0111 1000           # Symbol #3 => 0x78 => 120
+
+0x9e = 1001 1110 [10]
+0111 1010           # Symbol #4 => 0x7a => 122
+
+0                   # Tree Select => false => Code Lengths = [2, 2, 2, 2]
+
+0x5b 0xff 0xaf 0x02 0xc0 0x22 0x79 0x5c 0xfb 0x5a 0x8c 0x42 0x3b 0xf4 0x25 0x55 0x19 0x5a 0x92 0x99 0xb1 0x35 0xc8 0x19
+0x9e … 0x9e … 0x0a 0x7b 0x4b 0x90 0xb9 0x3c 0x98 0xc8 0x09 0x40 0xf3 0xe6 0xd9 0x4d 0xe4 0x6d 0x65 0x1b 0x27 0x87 0x13 0x5f
+0xa6 0xe9 0x30 0x96 0x7b 0x3c 0x15 0xd8 0x53 0x1c
+
+
+
+
+End of Stream
+
+
+
