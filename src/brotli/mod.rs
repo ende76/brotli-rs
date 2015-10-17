@@ -296,6 +296,8 @@ enum DecompressorError {
 	ParseErrorComplexPrefixCodeLengths,
 	RingBufferError,
 	RunLengthExceededSizeOfContextMap,
+	InvalidTransformId,
+	InvalidLengthInStaticDictionary,
 }
 
 impl Display for DecompressorError {
@@ -323,6 +325,8 @@ impl Error for DecompressorError {
 			&DecompressorError::ParseErrorComplexPrefixCodeLengths => "Error parsing code lengths for complex prefix code",
 			&DecompressorError::RingBufferError => "Error accessing distance ring buffer",
 			&DecompressorError::RunLengthExceededSizeOfContextMap => "Run length excceeded declared length of context map",
+			&DecompressorError::InvalidTransformId => "Encountered invalid transform id in reference to static dictionary",
+			&DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
 		}
 	}
 }
@@ -1339,9 +1343,36 @@ impl<R: Read> Decompressor<R> {
 
 			Ok(State::CopyLiterals(window))
 		} else {
+			if copy_length < 4 || copy_length > 24 {
+				return Err(DecompressorError::InvalidLengthInStaticDictionary);
+			}
+
 			let word_id = distance - max_allowed_distance - 1;
-			// @TODO handle distance for static dictionary
-			unimplemented!();
+			let n_words_length = if copy_length < 4 {
+				0
+			} else {
+				1 << BROTLI_DICTIONARY_SIZE_BITS_BY_LENGTH[copy_length]
+			};
+			let index = word_id % n_words_length;
+			let offset_from = BROTLI_DICTIONARY_OFFSETS_BY_LENGTH[copy_length] + index * copy_length;
+			let offset_to = BROTLI_DICTIONARY_OFFSETS_BY_LENGTH[copy_length] + (index + 1) * copy_length;
+			let base_word = &BROTLI_DICTIONARY[offset_from..offset_to];
+			let transform_id = word_id >> BROTLI_DICTIONARY_SIZE_BITS_BY_LENGTH[copy_length];
+
+			if transform_id > 120 {
+				return Err(DecompressorError::InvalidTransformId);
+			}
+
+			println!("base word = {:?}", String::from_utf8(Vec::from(base_word)));
+			println!("transform id = {:?}", transform_id);
+
+			let transformed_word = match transform_id {
+				0 => base_word,
+				// @TODO implement transformations 1-120 according to Appendix B.
+				_ => unimplemented!(),
+			};
+
+			Ok(State::CopyLiterals(Vec::from(transformed_word)))
 		}
 
 	}
