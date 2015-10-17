@@ -645,13 +645,6 @@ impl<R: Read> Decompressor<R> {
 
 		// println!("NSYM = {:?}", n_sym);
 
-		let tree_select = match n_sym {
-			4 => match self.in_stream.read_bit() {
-				Ok(v) => Some(v),
-				Err(_) => return Err(DecompressorError::UnexpectedEOF),
-			},
-			_ => None,
-		};
 
 		let mut symbols = vec![0; n_sym];
 		for i in 0..n_sym {
@@ -662,6 +655,14 @@ impl<R: Read> Decompressor<R> {
 		}
 
 		// println!("Symbols = {:?}", symbols);
+
+		let tree_select = match n_sym {
+			4 => match self.in_stream.read_bit() {
+				Ok(v) => Some(v),
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			},
+			_ => None,
+		};
 
 		let code_lengths = match (n_sym, tree_select) {
 			(1, None) => vec![],
@@ -768,20 +769,16 @@ impl<R: Read> Decompressor<R> {
 		loop {
 			match prefix_code_code_lengths.lookup_symbol(&mut self.in_stream) {
 				Some(new_code_length @ 0...15) => {
-					// print!(" {:?},", (actual_code_lengths.len() as u8) as char);
-
 					actual_code_lengths.push(new_code_length as usize);
 					last_symbol = Some(new_code_length);
 					last_repeat = None;
 
-					// println!("code length = {:?}", new_code_length);
-
 					if new_code_length > 0 {
 						last_non_zero_codelength = new_code_length;
+
 						sum += 32768 >> new_code_length;
 
-						// println!("32768 >> code length = {:?}", 32768 >> new_code_length);
-						// println!("sum = {:?}", sum);
+						// println!("32768 >> code length == {:?}, sum == {:?}", 32768 >> new_code_length, sum);
 
 						if sum == 32768 {
 							break;
@@ -803,8 +800,7 @@ impl<R: Read> Decompressor<R> {
 
 								sum += 32768 >> last_non_zero_codelength;
 
-								// println!("32768 >> code length = {:?}", 32768 >> new_code_length);
-								// println!("sum = {:?}", sum);
+								// println!("32768 >> code length == {:?}, sum == {:?}", 32768 >> last_non_zero_codelength, sum);
 
 								if sum == 32768 {
 									break;
@@ -825,8 +821,7 @@ impl<R: Read> Decompressor<R> {
 
 								sum += 32768 >> last_non_zero_codelength;
 
-								// println!("32768 >> code length = {:?}", 32768 >> new_code_length);
-								// println!("sum = {:?}", sum);
+								// println!("32768 >> code length == {:?}, sum == {:?}", 32768 >> last_non_zero_codelength, sum);
 
 								if sum == 32768 {
 									break;
@@ -883,6 +878,14 @@ impl<R: Read> Decompressor<R> {
 		// println!("");
 
 		// println!("Actual Code Lengths = {:?}", actual_code_lengths);
+
+		if actual_code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len() == 1 {
+			// @TODO handle case in lookup from complex prefix code when
+			//       there's only one symbol. In that case, no bit should
+			//       be consumed from the stream, and the one symbol should
+			//       be emitted immediately.
+			unimplemented!();
+		}
 
 		Ok((PrefixCode::Complex,
 			huffman::codes_from_lengths(actual_code_lengths)))
@@ -963,8 +966,7 @@ impl<R: Read> Decompressor<R> {
 			Err(e) => return Err(e),
 		};
 
-		// println!("Prefix Code Context Map = {:?}", prefix_code);
-		// println!("Prefix Tree Context Map = {:?}", prefix_tree);
+		// !("Prefix Tree Context Map = {:?}", prefix_tree);
 
 		let mut c_map = Vec::with_capacity(len);
 		let mut c_pushed = 0;
@@ -991,8 +993,10 @@ impl<R: Read> Decompressor<R> {
 					}
 				},
 				Some(context_id) => {
-					// println!("context id = {:?}", context_id - rlemax);
 					c_map.push(if context_id == 0 { 0 } else { (context_id - rlemax) as u8 });
+
+					// println!("context id == {:?}", if context_id == 0 { 0 } else { (context_id - rlemax) as u8 });
+
 					c_pushed += 1;
 				},
 				None => return Err(DecompressorError::ParseErrorContextMap),
@@ -1187,6 +1191,7 @@ impl<R: Read> Decompressor<R> {
 				_ => unreachable!(),
 			};
 
+			// println!("(btype, cid) = {:?}", (btype, cid));
 			let index = self.meta_block.header.c_map_l.as_ref().unwrap()[btype * 64 + cid as usize] as usize;
 
 			// println!("literal prefix code index = {:?}", index);
@@ -1211,6 +1216,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				_ => unreachable!(),
 			};
+
+			// println!("Literal = {:?}", literals[i]);
 
 			self.literal_buf.push(literals[i]);
 		}
@@ -1381,13 +1388,24 @@ impl<R: Read> Decompressor<R> {
 			// println!("base word = {:?}", String::from_utf8(Vec::from(base_word)));
 			// println!("transform id = {:?}", transform_id);
 
+			fn uppercase_all(base_word: &[u8]) -> Vec<u8> {
+				Vec::from(String::from_utf8(Vec::from(base_word)).unwrap().to_uppercase().as_bytes())
+			}
+
 			let transformed_word = match transform_id {
-				0 => base_word,
+				0 => Vec::from(base_word),
+				83 => [vec![0x20], uppercase_all(base_word), vec![0x20]].concat(),
 				// @TODO implement transformations 1-120 according to Appendix B.
-				_ => unimplemented!(),
+				_ => {
+					// let output_so_far = String::from_utf8(self.output_window.clone().into_iter().filter(|&b| b > 0).collect::<Vec<_>>()).unwrap();
+
+					// println!("output so far = {:?}", output_so_far);
+
+					unimplemented!()
+				},
 			};
 
-			Ok(State::CopyLiterals(Vec::from(transformed_word)))
+			Ok(State::CopyLiterals(transformed_word))
 		}
 
 	}
@@ -1479,6 +1497,8 @@ impl<R: Read> Decompressor<R> {
 						Err(_) => return Err(DecompressorError::UnexpectedEOF)
 					}
 
+					// println!("MNibbles = 0");
+
 					self.meta_block.header.m_nibbles = Some(0);
 
 					self.state = match self.parse_m_skip_bytes() {
@@ -1489,6 +1509,8 @@ impl<R: Read> Decompressor<R> {
 				State::MNibbles(m_nibbles) => {
 					self.meta_block.header.m_nibbles = Some(m_nibbles);
 
+					// println!("MNibbles = {:?}", m_nibbles);
+
 					self.state = match self.parse_m_len() {
 						Ok(state) => state,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
@@ -1496,6 +1518,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::MSkipBytes(0) => {
 					self.meta_block.header.m_skip_bytes = Some(0);
+
+					// println!("MSKIPBYTES = 0");
 
 					match self.in_stream.read_u8_from_byte_tail() {
 						Ok(0) => {},
@@ -1734,8 +1758,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_codes_literals = Some(prefix_codes);
 					self.meta_block.prefix_trees_literals = Some(prefix_trees);
 
-					// println!("Prefix Code Literals = {:?}", self.meta_block.header.prefix_codes_literals);
-					// println!("Prefix Tree literals = {:?}", self.meta_block.prefix_trees_literals);
+					// println!("Prefix Codes Literals = {:?}", self.meta_block.header.prefix_codes_literals);
+					// println!("Prefix Trees literals = {:?}", self.meta_block.prefix_trees_literals);
 
 					self.state = match self.parse_prefix_code_insert_and_copy_lengths() {
 						Ok(state) => state,
@@ -1890,9 +1914,6 @@ impl<R: Read> Decompressor<R> {
 
 
 					// let output_so_far = String::from_utf8(self.output_window.clone().into_iter().filter(|&b| b > 0).collect::<Vec<_>>()).unwrap();
-					// let expected = String::from("znxcvnmz,xvnm.,zxcnv.,xcn.z,vn.zvn.zxcvn.,zxcn.vn.v,znm.,vnzx.,vnzxc.vn.z,vnz.,nv.z,nvmzxc,nvzxcvcnm.,vczxvnzxcnvmxc.zmcnvzm.,nvmc,nzxmc,vn.mnnmzxc,vnxcnmv,znvzxcnmv,.xcnvm,zxcnzxv.zx,qweryweurqioweupropqwutioweupqrioweutiopweuriopweuriopqwurioputiopqwuriowuqerioupqweropuweropqwurweuqriopuropqwuriopuqwriopuqweopruioqweurqweuriouqweopruioupqiytioqtyiowtyqptypryoqweutioioqtweqruowqeytiowquiourowetyoqwupiotweuqiorweuqroipituqwiorqwtioweuriouytuioerytuioweryuitoweytuiweyuityeruirtyuqriqweuropqweiruioqweurioqwuerioqwyuituierwotueryuiotweyrtuiwertyioweryrueioqptyioruyiopqwtjkasdfhlafhlasdhfjklashjkfhasjklfhklasjdfhklasdhfjkalsdhfklasdhjkflahsjdkfhklasfhjkasdfhasfjkasdhfklsdhalghhaf;hdklasfhjklashjklfasdhfasdjklfhsdjklafsd;hkldadfjjklasdhfjasddfjklfhakjklasdjfkl;asdjfasfljasdfhjklasdfhjkaghjkashf;djfklasdjfkljasdklfjklasdjfkljasdfkljaklfj");
-
-					// println!("{}", &expected[0..output_so_far.len()]);
 					// println!("{}", output_so_far);
 
 					return Ok(self.buf.len());

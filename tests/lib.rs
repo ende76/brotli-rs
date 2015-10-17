@@ -308,6 +308,83 @@ fn should_decompress_zeros() {
 	assert_eq!(expected, decompressed);
 }
 
+#[test]
+/// Brotli: quickfox_repeated
+/// introduces simple prefix code with NSYM = 4, which uses tree_select flag
+fn should_decompress_quickfox_repeated() {
+	use std::io::{ Read };
+	use compression::brotli::Decompressor;
+	use compression::bitreader::BitReader;
+
+	let brotli_stream = BitReader::new(std::fs::File::open("data/quickfox_repeated.compressed").unwrap());
+
+	let mut decompressed = &mut String::new();
+	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+
+	let mut expected = &mut String::new();
+	let _ = std::fs::File::open("data/quickfox_repeated").unwrap().read_to_string(&mut expected);
+
+	assert_eq!(expected, decompressed);
+}
+
+
+fn inverse_move_to_front_transform(v: &mut[u8]) {
+	let mut mtf: Vec<u8> = vec![0; 256];
+	let v_len = v.len();
+
+	for i in 0..256 {
+		mtf[i] = i as u8;
+	}
+
+	for i in 0..v_len {
+		let index = v[i] as usize;
+		let value = mtf[index];
+		v[i] = value;
+
+		for j in (1..index+1).rev() {
+			mtf[j] = mtf[j - 1];
+		}
+		mtf[0] = value;
+	}
+}
+
+fn move_to_front_transform(v: &mut[u8]) {
+	let mut alphabet: Vec<u8> = vec![0; 256];
+	let v_len = v.len();
+
+	for i in 0..256 {
+		alphabet[i] = i as u8;
+	}
+
+	for i in 0..v_len {
+		let value = v[i];
+		let mut index = 0;
+		loop {
+			if alphabet[index] == value {
+				break;
+			}
+			index += 1
+		}
+
+		for j in (1..index+1).rev() {
+			alphabet[j] = alphabet[j - 1];
+		}
+		alphabet[0] = value;
+		v[i] = index as u8;
+	}
+}
+
+
+#[test]
+fn should_compose_to_identity() {
+	let mut v: Vec<u8> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 3, 3, 0, 4];
+	let expected = v.clone();
+
+	inverse_move_to_front_transform(&mut v);
+	move_to_front_transform(&mut v);
+
+	assert_eq!(expected, v);
+}
 
 
 

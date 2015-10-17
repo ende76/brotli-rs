@@ -54,6 +54,8 @@ impl<R: Read> BitReader<R> {
 	pub fn read_u8(&mut self) -> Result<u8, BitReaderError> {
 		let mut buf = &mut [0u8];
 
+		// println!("bit pos = {:?}", self.global_bit_pos);
+
 		match (self.bit_pos, self.current_byte, self.read_exact(buf)) {
 			(_, Some(byte), Ok(())) => {
 				self.current_byte = Some(buf[0]);
@@ -79,6 +81,8 @@ impl<R: Read> BitReader<R> {
 
 	pub fn read_u8_from_nibble(&mut self) -> Result<u8, BitReaderError> {
 		let mut buf = &mut [0u8];
+
+		// println!("bit pos = {:?}", self.global_bit_pos);
 
 		match (self.bit_pos, self.current_byte) {
 			(0, None) => match self.read_exact(buf) {
@@ -127,6 +131,8 @@ impl<R: Read> BitReader<R> {
 	pub fn read_u16(&mut self) -> Result<u16, BitReaderError> {
 		let mut buf = &mut [0u8; 2];
 
+		// println!("bit pos = {:?}", self.global_bit_pos);
+
 		match (self.current_byte, self.read_exact(buf)) {
 			(Some(byte), Ok(())) => {
 				self.current_byte = Some(buf[1]);
@@ -155,6 +161,8 @@ impl<R: Read> BitReader<R> {
 
 		let mut my_u32 = 0;
 
+		// println!("bit pos = {:?}", self.global_bit_pos);
+
 		for i in 0..n {
 			match self.read_bit() {
 				Ok(true) => my_u32 = my_u32 | (1 << i),
@@ -180,6 +188,8 @@ impl<R: Read> BitReader<R> {
 	}
 
 	pub fn read_bit(&mut self) -> Result<bool, BitReaderError> {
+		// println!("bit pos = {:?}", self.global_bit_pos);
+
 		match (self.current_byte, self.bit_pos) {
 			(Some(byte), bit_pos) => {
 				self.bit_pos = (self.bit_pos + 1) % 8;
