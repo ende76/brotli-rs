@@ -1167,14 +1167,23 @@ impl<R: Read> Decompressor<R> {
 
 					p1 & 0x3f
 				},
-				1 => unimplemented!(),
+				1 => {
+					let p1 = *self.literal_buf.nth(0).unwrap() as usize;
+
+					p1 >> 2
+				},
 				2 => {
 					let p1 = *self.literal_buf.nth(0).unwrap() as usize;
 					let p2 = *self.literal_buf.nth(1).unwrap() as usize;
 
 					LUT_0[p1] | LUT_1[p2]
 				},
-				3 => unimplemented!(),
+				3 => {
+					let p1 = *self.literal_buf.nth(0).unwrap() as usize;
+					let p2 = *self.literal_buf.nth(1).unwrap() as usize;
+
+					(LUT_2[p1] << 3) | LUT_2[p2]
+				},
 				_ => unreachable!(),
 			};
 
