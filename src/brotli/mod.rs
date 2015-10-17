@@ -992,7 +992,7 @@ impl<R: Read> Decompressor<R> {
 				},
 				Some(context_id) => {
 					// println!("context id = {:?}", context_id - rlemax);
-					c_map.push((context_id - rlemax) as u8);
+					c_map.push(if context_id == 0 { 0 } else { (context_id - rlemax) as u8 });
 					c_pushed += 1;
 				},
 				None => return Err(DecompressorError::ParseErrorContextMap),
