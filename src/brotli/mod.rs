@@ -1290,17 +1290,16 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_block_switch_command(&mut self, prefix_code: PrefixCode, prefix_tree_types: HuffmanCodes, btype: NBltypes, btype_prev: NBltypes, n_bltypes: NBltypes, prefix_tree_counts: HuffmanCodes) -> result::Result<BlockSwitch, DecompressorError> {
-		let block_type_code = match self.meta_block.header.prefix_code_block_types_literals {
-			Some(PrefixCode::Simple(PrefixCodeSimple {
+		let block_type_code = match prefix_code {
+			PrefixCode::Simple(PrefixCodeSimple {
 				n_sym: Some(1),
 				symbols: Some(ref symbols),
 				tree_select: _,
-			})) => symbols[0],
-			Some(_) => match prefix_tree_types.lookup_symbol(&mut self.in_stream) {
+			}) => symbols[0],
+			_ => match prefix_tree_types.lookup_symbol(&mut self.in_stream) {
 				Some(block_type_code) => block_type_code,
 				None => unreachable!(),
-			},
-			_ => unreachable!(),
+			}
 		};
 
 		debug(&format!("switch block type code = {:?}", block_type_code));
@@ -2112,18 +2111,9 @@ impl<R: Read> Decompressor<R> {
 
 					debug(&format!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length));
 
-					self.state = match (self.meta_block.header.n_bltypes_l, self.meta_block.blen_l) {
-						(Some(0), _) => unreachable!(),
-						// @TODO should parse block switch command for literals here
-						(_, Some(0)) => {
-							println!("{}", &format!("{}", String::from_utf8(self.output_window.clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
-							unimplemented!()
-						},
-						(Some(_), _) =>  match self.parse_insert_literals() {
-							Ok(state) => state,
-							Err(_) => return Err(DecompressorError::UnexpectedEOF),
-						},
-						_ => unreachable!(),
+					self.state = match self.parse_insert_literals() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 				},
 				State::InsertLiterals(insert_literals) => {
