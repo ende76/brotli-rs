@@ -94,6 +94,7 @@ type MLenLiterals = Literals;
 type InsertLiterals = Literals;
 type NBltypes = u8;
 type BLen = u32;
+type BlockSwitch = (NBltypes, BLen);
 type NPostfix = u8;
 type NDirect = u8;
 type ContextMode = u16;
@@ -167,14 +168,19 @@ struct MetaBlock {
 	context_modes_literals: Option<ContextModes>,
 	prefix_tree_block_types_literals: Option<HuffmanCodes>,
 	prefix_tree_block_counts_literals: Option<HuffmanCodes>,
+	prefix_tree_block_types_distances: Option<HuffmanCodes>,
+	prefix_tree_block_counts_distances: Option<HuffmanCodes>,
 	prefix_trees_literals: Option<Vec<HuffmanCodes>>,
 	prefix_tree_insert_and_copy_lengths: Option<HuffmanCodes>,
 	prefix_trees_distances: Option<Vec<HuffmanCodes>>,
-	btype_l: Option<NBltypes>,
+	btype_l: NBltypes,
+	btype_l_prev: NBltypes,
 	blen_l: Option<BLen>,
-	btype_i: Option<NBltypes>,
+	btype_i: NBltypes,
+	btype_i_prev: NBltypes,
 	blen_i: Option<BLen>,
-	btype_d: Option<NBltypes>,
+	btype_d: NBltypes,
+	btype_d_prev: NBltypes,
 	blen_d: Option<BLen>,
 	insert_and_copy_length: Option<Symbol>,
 	insert_length: Option<InsertLength>,
@@ -188,15 +194,20 @@ impl MetaBlock {
 		MetaBlock{
 			header: MetaBlockHeader::new(),
 			count_output: 0,
-			btype_l: None,
+			btype_l: 0,
+			btype_l_prev: 1,
 			blen_l: None,
-			btype_i: None,
+			btype_i: 0,
+			btype_i_prev: 1,
 			blen_i: None,
-			btype_d: None,
+			btype_d: 0,
+			btype_d_prev: 1,
 			blen_d: None,
 			context_modes_literals: None,
 			prefix_tree_block_types_literals: None,
 			prefix_tree_block_counts_literals: None,
+			prefix_tree_block_types_distances: None,
+			prefix_tree_block_counts_distances: None,
 			prefix_trees_literals: None,
 			prefix_tree_insert_and_copy_lengths: None,
 			prefix_trees_distances: None,
@@ -229,6 +240,8 @@ struct MetaBlockHeader {
 	c_map_l: Option<ContextMap>,
 	prefix_code_block_types_literals: Option<PrefixCode>,
 	prefix_code_block_counts_literals: Option<PrefixCode>,
+	prefix_code_block_types_distances: Option<PrefixCode>,
+	prefix_code_block_counts_distances: Option<PrefixCode>,
 	prefix_codes_literals: Option<Vec<PrefixCode>>,
 	prefix_code_insert_and_copy_lengths: Option<PrefixCode>,
 	prefix_codes_distances: Option<Vec<PrefixCode>>,
@@ -255,6 +268,8 @@ impl MetaBlockHeader {
 			c_map_l: None,
 			prefix_code_block_types_literals: None,
 			prefix_code_block_counts_literals: None,
+			prefix_code_block_types_distances: None,
+			prefix_code_block_counts_distances: None,
 			prefix_codes_literals: None,
 			prefix_code_insert_and_copy_lengths: None,
 			prefix_codes_distances: None,
@@ -285,6 +300,9 @@ enum State {
 	FirstBlockCountLiterals(BLen),
 	NBltypesI(NBltypes),
 	NBltypesD(NBltypes),
+	PrefixCodeBlockTypesDistances((PrefixCode, HuffmanCodes)),
+	PrefixCodeBlockCountsDistances((PrefixCode, HuffmanCodes)),
+	FirstBlockCountDistances(BLen),
 	NPostfix(NPostfix),
 	NDirect(NDirect),
 	ContextModesLiterals(ContextModes),
@@ -952,8 +970,6 @@ impl<R: Read> Decompressor<R> {
 	fn parse_prefix_code_block_counts_literals(&mut self) -> result::Result<State, DecompressorError> {
 		let alphabet_size = 26;
 
-		debug(&format!("Parsing Prefix Code Block Counts Literals…"));
-
 		Ok(State::PrefixCodeBlockCountsLiterals(
 			match self.parse_prefix_code(alphabet_size) {
 					Ok(prefix_code) => prefix_code,
@@ -962,8 +978,31 @@ impl<R: Read> Decompressor<R> {
 		))
 	}
 
-	fn parse_first_block_count_literals(&mut self) -> result::Result<State, DecompressorError> {
-		let (base_length, extra_bits) = match self.meta_block.prefix_tree_block_counts_literals.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+	fn parse_prefix_code_block_types_distances(&mut self) -> result::Result<State, DecompressorError> {
+		let alphabet_size = (self.meta_block.header.n_bltypes_d.unwrap() as usize) + 2;
+
+		Ok(State::PrefixCodeBlockTypesDistances(
+			match self.parse_prefix_code(alphabet_size) {
+					Ok(prefix_code) => prefix_code,
+					Err(e) => return Err(e),
+			}
+		))
+	}
+
+	fn parse_prefix_code_block_counts_distances(&mut self) -> result::Result<State, DecompressorError> {
+		let alphabet_size = 26;
+
+		Ok(State::PrefixCodeBlockCountsDistances(
+			match self.parse_prefix_code(alphabet_size) {
+					Ok(prefix_code) => prefix_code,
+					Err(e) => return Err(e),
+			}
+		))
+	}
+
+	fn parse_block_count(&mut self, prefix_code: &HuffmanCodes) -> result::Result<BLen, DecompressorError> {
+		// @TODO consider case NSYM == 1, i.e. symbol should be emitted without consuming from stream
+		let (base_length, extra_bits) = match prefix_code.lookup_symbol(&mut self.in_stream) {
 			Some(symbol @  0... 3) => (    1 + (symbol as BLen)      <<  2,  2usize),
 			Some(symbol @  4... 7) => (   17 + (symbol as BLen -  4) <<  3,  3),
 			Some(symbol @  8...11) => (   49 + (symbol as BLen -  8) <<  4,  4),
@@ -983,12 +1022,28 @@ impl<R: Read> Decompressor<R> {
 
 		debug(&format!("(base_length, extra_bits) = {:?}", (base_length, extra_bits)));
 
-		let block_count = match self.in_stream.read_u32_from_n_bits(extra_bits) {
-			Ok(my_u32) => base_length + my_u32,
-			Err(_) => return Err(DecompressorError::UnexpectedEOF),
-		};
+		match self.in_stream.read_u32_from_n_bits(extra_bits) {
+			Ok(my_u32) => Ok(base_length + my_u32),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		}
+	}
 
-		Ok(State::FirstBlockCountLiterals(block_count))
+	fn parse_first_block_count_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let prefix_code = self.meta_block.prefix_tree_block_counts_literals.as_ref().unwrap().clone();
+
+		match self.parse_block_count(&prefix_code) {
+			Ok(block_count) => Ok(State::FirstBlockCountLiterals(block_count)),
+			Err(e) => Err(e),
+		}
+	}
+
+	fn parse_first_block_count_distances(&mut self) -> result::Result<State, DecompressorError> {
+		let prefix_code = self.meta_block.prefix_tree_block_counts_distances.as_ref().unwrap().clone();
+
+		match self.parse_block_count(&prefix_code) {
+			Ok(block_count) => Ok(State::FirstBlockCountDistances(block_count)),
+			Err(e) => Err(e),
+		}
 	}
 
 	fn parse_prefix_codes_literals(&mut self) -> result::Result<State, DecompressorError> {
@@ -1234,6 +1289,54 @@ impl<R: Read> Decompressor<R> {
 		Ok(State::InsertLengthAndCopyLength((insert_length, copy_length)))
 	}
 
+	fn parse_block_switch_command(&mut self, prefix_code: PrefixCode, prefix_tree_types: HuffmanCodes, btype: NBltypes, btype_prev: NBltypes, n_bltypes: NBltypes, prefix_tree_counts: HuffmanCodes) -> result::Result<BlockSwitch, DecompressorError> {
+		let block_type_code = match self.meta_block.header.prefix_code_block_types_literals {
+			Some(PrefixCode::Simple(PrefixCodeSimple {
+				n_sym: Some(1),
+				symbols: Some(ref symbols),
+				tree_select: _,
+			})) => symbols[0],
+			Some(_) => match prefix_tree_types.lookup_symbol(&mut self.in_stream) {
+				Some(block_type_code) => block_type_code,
+				None => unreachable!(),
+			},
+			_ => unreachable!(),
+		};
+
+		debug(&format!("switch block type code = {:?}", block_type_code));
+
+		let block_type = match block_type_code {
+			0 => btype_prev,
+			1 => (btype + 1) % n_bltypes,
+			2...255 => (block_type_code - 2) as u8,
+			_ => unreachable!(),
+		};
+
+		debug(&format!("block type = {:?}", block_type));
+
+		let block_count = match self.parse_block_count(&prefix_tree_counts) {
+			Ok(block_count) => block_count,
+			Err(e) => return Err(e),
+		};
+
+		debug(&format!("block count = {:?}", block_count));
+
+		Ok((block_type, block_count))
+	}
+
+	fn parse_block_switch_command_literals(&mut self) -> result::Result<BlockSwitch, DecompressorError> {
+		let prefix_code = self.meta_block.header.prefix_code_block_types_literals.as_ref().unwrap().clone();
+		let prefix_tree_types = self.meta_block.prefix_tree_block_types_literals.as_ref().unwrap().clone();
+		let btype = self.meta_block.btype_l;
+		let btype_prev = self.meta_block.btype_l_prev;
+		let n_bltypes = self.meta_block.header.n_bltypes_l.unwrap();
+
+		let prefix_tree_counts = self.meta_block.prefix_tree_block_counts_literals.as_ref().unwrap().clone();
+
+
+		self.parse_block_switch_command(prefix_code, prefix_tree_types, btype, btype_prev, n_bltypes, prefix_tree_counts)
+	}
+
 	fn parse_insert_literals(&mut self) -> result::Result<State, DecompressorError> {
 		let insert_length = self.meta_block.insert_length.unwrap() as usize;
 		let mut literals = vec![0; insert_length];
@@ -1241,14 +1344,19 @@ impl<R: Read> Decompressor<R> {
 		for i in 0..insert_length {
 			match self.meta_block.blen_l {
 				None => {},
-				Some(0) => {
-					// @TODO read new block type and length (switch command)
-					unimplemented!()
+				Some(0) => match self.parse_block_switch_command_literals() {
+					Ok((block_type, block_count)) => {
+						self.meta_block.btype_l_prev = self.meta_block.btype_l;
+						self.meta_block.btype_l = block_type;
+
+						self.meta_block.blen_l = Some(block_count - 1);
+					},
+					Err(e) => return Err(e),
 				},
 				Some(ref mut blen_l) => *blen_l -= 1,
-			}
+			};
 
-			let btype = self.meta_block.btype_l.unwrap() as usize;
+			let btype = self.meta_block.btype_l as usize;
 			let context_mode = self.meta_block.context_modes_literals.as_ref().unwrap()[btype];
 			let cid = match context_mode {
 				0 => {
@@ -1331,7 +1439,7 @@ impl<R: Read> Decompressor<R> {
 			_ => unreachable!(),
 		};
 
-		let index = self.meta_block.header.c_map_d.as_ref().unwrap()[self.meta_block.btype_d.unwrap() as usize * 4 + cid as usize] as usize;
+		let index = self.meta_block.header.c_map_d.as_ref().unwrap()[self.meta_block.btype_d as usize * 4 + cid as usize] as usize;
 
 		debug(&format!("distance prefix code index = {:?}", index));
 		debug(&format!("distance prefix code = {:?}", self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index]));
@@ -1705,7 +1813,6 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::NBltypesL(n_bltypes_l) => {
 					self.meta_block.header.n_bltypes_l = Some(n_bltypes_l);
-					self.meta_block.btype_l = Some(0);
 
 					debug(&format!("NBLTYPESL = {:?}", n_bltypes_l));
 
@@ -1748,16 +1855,15 @@ impl<R: Read> Decompressor<R> {
 				State::FirstBlockCountLiterals(blen) => {
 					self.meta_block.blen_l = Some(blen);
 
-					debug(format!("Block count literals = {:?}", blen))
+					debug(&format!("Block count literals = {:?}", blen));
 
 					self.state = match self.parse_n_bltypes_i() {
 						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						Err(e) => return Err(e),
 					};
 				},
 				State::NBltypesI(n_bltypes_i) => {
 					self.meta_block.header.n_bltypes_i = Some(n_bltypes_i);
-					self.meta_block.btype_i = Some(0);
 
 					debug(&format!("NBLTYPESI = {:?}", n_bltypes_i));
 
@@ -1767,24 +1873,59 @@ impl<R: Read> Decompressor<R> {
 					} else {
 						match self.parse_n_bltypes_d() {
 							Ok(state) => state,
-							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+							Err(e) => return Err(e),
 						}
 					}
 				},
 				State::NBltypesD(n_bltypes_d) => {
 					self.meta_block.header.n_bltypes_d = Some(n_bltypes_d);
-					self.meta_block.btype_d = Some(0);
 
 					debug(&format!("NBLTYPESD = {:?}", n_bltypes_d));
 
 					self.state = if n_bltypes_d >= 2 {
-						// @TODO parse prefix codes for block type and block count etc.
-						unimplemented!();
+						match self.parse_prefix_code_block_types_distances() {
+							Ok(state) => state,
+							Err(e) => return Err(e),
+						}
 					} else {
 						match self.parse_n_postfix() {
 							Ok(state) => state,
-							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+							Err(e) => return Err(e),
 						}
+					};
+				},
+				State::PrefixCodeBlockTypesDistances((prefix_code, prefix_tree)) => {
+					self.meta_block.header.prefix_code_block_types_distances = Some(prefix_code);
+					self.meta_block.prefix_tree_block_types_distances = Some(prefix_tree);
+
+					debug(&format!("Prefix Code Block Types Distances = {:?}", self.meta_block.header.prefix_code_block_types_distances));
+					debug(&format!("Prefix Tree Block Types Distances = {:?}", self.meta_block.prefix_tree_block_types_distances));
+
+					self.state = match self.parse_prefix_code_block_counts_distances() {
+						Ok(state) => state,
+						Err(e) => return Err(e),
+					};
+				},
+				State::PrefixCodeBlockCountsDistances((prefix_code, prefix_tree)) => {
+					self.meta_block.header.prefix_code_block_counts_distances = Some(prefix_code);
+					self.meta_block.prefix_tree_block_counts_distances = Some(prefix_tree);
+
+					debug(&format!("Prefix Code Block Counts Distances = {:?}", self.meta_block.header.prefix_code_block_counts_distances));
+					debug(&format!("Prefix Tree Block Counts Distances = {:?}", self.meta_block.prefix_tree_block_counts_distances));
+
+					self.state = match self.parse_first_block_count_distances() {
+						Ok(state) => state,
+						Err(e) => return Err(e),
+					};
+				},
+				State::FirstBlockCountDistances(blen) => {
+					self.meta_block.blen_d = Some(blen);
+
+					debug(&format!("Block count distances = {:?}", blen));
+
+					self.state = match self.parse_n_postfix() {
+						Ok(state) => state,
+						Err(e) => return Err(e),
 					};
 				},
 				State::NPostfix(n_postfix) => {
@@ -1794,7 +1935,7 @@ impl<R: Read> Decompressor<R> {
 
 					self.state = match self.parse_n_direct() {
 						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						Err(e) => return Err(e),
 					};
 				},
 				State::NDirect(n_direct) => {
@@ -1804,7 +1945,7 @@ impl<R: Read> Decompressor<R> {
 
 					self.state = match self.parse_context_modes_literals() {
 						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						Err(e) => return Err(e),
 					};
 				},
 				State::ContextModesLiterals(context_modes) => {
@@ -1814,7 +1955,7 @@ impl<R: Read> Decompressor<R> {
 
 					self.state = match self.parse_n_trees_l() {
 						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						Err(e) => return Err(e),
 					};
 				},
 				State::NTreesL(n_trees_l) => {
@@ -1975,7 +2116,10 @@ impl<R: Read> Decompressor<R> {
 						match (self.meta_block.header.n_bltypes_d, self.meta_block.blen_d) {
 							(Some(0), _) => unreachable!(),
 							// @TODO should parse block switch command for distances here
-							(_, Some(0)) => unimplemented!(),
+							(_, Some(0)) => {
+								println!("{}", String::from_utf8(self.output_window.iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap());
+								unimplemented!();
+							},
 							(Some(_), _) =>  match self.parse_distance_code() {
 								Ok(state) => state,
 								Err(_) => return Err(DecompressorError::UnexpectedEOF),
