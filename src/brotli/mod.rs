@@ -19,7 +19,7 @@ enum LogLevel {
 	None,
 	Debug,
 }
-const LOG_LEVEL: LogLevel = LogLevel::Debug;
+const LOG_LEVEL: LogLevel = LogLevel::None;
 
 fn debug(msg: &str) {
 	if LOG_LEVEL == LogLevel::Debug {
@@ -1333,6 +1333,17 @@ impl<R: Read> Decompressor<R> {
 
 		let prefix_tree_counts = self.meta_block.prefix_tree_block_counts_literals.as_ref().unwrap().clone();
 
+		self.parse_block_switch_command(prefix_code, prefix_tree_types, btype, btype_prev, n_bltypes, prefix_tree_counts)
+	}
+
+	fn parse_block_switch_command_distances(&mut self) -> result::Result<BlockSwitch, DecompressorError> {
+		let prefix_code = self.meta_block.header.prefix_code_block_types_distances.as_ref().unwrap().clone();
+		let prefix_tree_types = self.meta_block.prefix_tree_block_types_distances.as_ref().unwrap().clone();
+		let btype = self.meta_block.btype_d;
+		let btype_prev = self.meta_block.btype_d_prev;
+		let n_bltypes = self.meta_block.header.n_bltypes_d.unwrap();
+
+		let prefix_tree_counts = self.meta_block.prefix_tree_block_counts_distances.as_ref().unwrap().clone();
 
 		self.parse_block_switch_command(prefix_code, prefix_tree_types, btype, btype_prev, n_bltypes, prefix_tree_counts)
 	}
@@ -1419,16 +1430,26 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_distance_code(&mut self) -> result::Result<State, DecompressorError> {
+		debug(&format!("parse_distance_code(): blen_d = {:?}", self.meta_block.blen_d));
+
 		// check for implicit distance 0 ([…]"as indicated by the insert-and-copy length code")
 		match self.meta_block.distance {
 			Some(0) => return Ok(State::DistanceCode(0)),
 			Some(_) => unreachable!(),
 			None => {}
-		};
+		}
 
 		match self.meta_block.blen_d {
 			None => {},
-			Some(0) => unreachable!(), // Note: blen_d == 0 should have been caught before calling this method
+			Some(0) => match self.parse_block_switch_command_distances() {
+				Ok((block_type, block_count)) => {
+					self.meta_block.btype_d_prev = self.meta_block.btype_d;
+					self.meta_block.btype_d = block_type;
+
+					self.meta_block.blen_d = Some(block_count - 1);
+				},
+				Err(e) => return Err(e),
+			},
 			Some(ref mut blen_d) => *blen_d -= 1,
 		}
 
@@ -1587,12 +1608,12 @@ impl<R: Read> Decompressor<R> {
 
 			let transformed_word = match transform_id {
 				0 => Vec::from(base_word),
+				1 => [Vec::from(base_word), vec![0x20]].concat(),
 				83 => [vec![0x20], uppercase_all(base_word), vec![0x20]].concat(),
 				// @TODO implement transformations 1-120 according to Appendix B.
 				_ => {
-					// let output_so_far = String::from_utf8(self.output_window.clone().into_iter().filter(|&b| b > 0).collect::<Vec<_>>()).unwrap();
+					// println!("{}", &format!("output so far =\n{}", String::from_utf8(self.output_window.clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
 
-					// debug(&format!("output so far = {:?}", output_so_far));
 
 					unimplemented!()
 				},
@@ -2094,7 +2115,10 @@ impl<R: Read> Decompressor<R> {
 					self.state = match (self.meta_block.header.n_bltypes_l, self.meta_block.blen_l) {
 						(Some(0), _) => unreachable!(),
 						// @TODO should parse block switch command for literals here
-						(_, Some(0)) => unimplemented!(),
+						(_, Some(0)) => {
+							println!("{}", &format!("{}", String::from_utf8(self.output_window.clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
+							unimplemented!()
+						},
 						(Some(_), _) =>  match self.parse_insert_literals() {
 							Ok(state) => state,
 							Err(_) => return Err(DecompressorError::UnexpectedEOF),
@@ -2113,18 +2137,9 @@ impl<R: Read> Decompressor<R> {
 					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
 						State::DataMetaBlockEnd
 					} else {
-						match (self.meta_block.header.n_bltypes_d, self.meta_block.blen_d) {
-							(Some(0), _) => unreachable!(),
-							// @TODO should parse block switch command for distances here
-							(_, Some(0)) => {
-								println!("{}", String::from_utf8(self.output_window.iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap());
-								unimplemented!();
-							},
-							(Some(_), _) =>  match self.parse_distance_code() {
-								Ok(state) => state,
-								Err(_) => return Err(DecompressorError::UnexpectedEOF),
-							},
-							_ => unreachable!(),
+						match self.parse_distance_code() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
 						}
 					};
 
