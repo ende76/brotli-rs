@@ -165,6 +165,8 @@ struct MetaBlock {
 	header: MetaBlockHeader,
 	count_output: usize,
 	context_modes_literals: Option<ContextModes>,
+	prefix_tree_block_types_literals: Option<HuffmanCodes>,
+	prefix_tree_block_counts_literals: Option<HuffmanCodes>,
 	prefix_trees_literals: Option<Vec<HuffmanCodes>>,
 	prefix_tree_insert_and_copy_lengths: Option<HuffmanCodes>,
 	prefix_trees_distances: Option<Vec<HuffmanCodes>>,
@@ -193,6 +195,8 @@ impl MetaBlock {
 			btype_d: None,
 			blen_d: None,
 			context_modes_literals: None,
+			prefix_tree_block_types_literals: None,
+			prefix_tree_block_counts_literals: None,
 			prefix_trees_literals: None,
 			prefix_tree_insert_and_copy_lengths: None,
 			prefix_trees_distances: None,
@@ -223,6 +227,8 @@ struct MetaBlockHeader {
 	n_trees_d: Option<NTrees>,
 	c_map_d: Option<ContextMap>,
 	c_map_l: Option<ContextMap>,
+	prefix_code_block_types_literals: Option<PrefixCode>,
+	prefix_code_block_counts_literals: Option<PrefixCode>,
 	prefix_codes_literals: Option<Vec<PrefixCode>>,
 	prefix_code_insert_and_copy_lengths: Option<PrefixCode>,
 	prefix_codes_distances: Option<Vec<PrefixCode>>,
@@ -247,6 +253,8 @@ impl MetaBlockHeader {
 			n_trees_d: None,
 			c_map_d: None,
 			c_map_l: None,
+			prefix_code_block_types_literals: None,
+			prefix_code_block_counts_literals: None,
 			prefix_codes_literals: None,
 			prefix_code_insert_and_copy_lengths: None,
 			prefix_codes_distances: None,
@@ -272,6 +280,9 @@ enum State {
 	MLenLiterals(MLenLiterals),
 	BltypeCodes(HuffmanCodes),
 	NBltypesL(NBltypes),
+	PrefixCodeBlockTypesLiterals((PrefixCode, HuffmanCodes)),
+	PrefixCodeBlockCountsLiterals((PrefixCode, HuffmanCodes)),
+	FirstBlockCountLiterals(BLen),
 	NBltypesI(NBltypes),
 	NBltypesD(NBltypes),
 	NPostfix(NPostfix),
@@ -315,6 +326,7 @@ enum DecompressorError {
 	RunLengthExceededSizeOfContextMap,
 	InvalidTransformId,
 	InvalidLengthInStaticDictionary,
+	CodeLengthsChecksum,
 }
 
 impl Display for DecompressorError {
@@ -344,6 +356,7 @@ impl Error for DecompressorError {
 			&DecompressorError::RunLengthExceededSizeOfContextMap => "Run length excceeded declared length of context map",
 			&DecompressorError::InvalidTransformId => "Encountered invalid transform id in reference to static dictionary",
 			&DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
+			&DecompressorError::CodeLengthsChecksum => "Code length check sum did not add up to 32 in complex prefix code",
 		}
 	}
 }
@@ -571,9 +584,13 @@ impl<R: Read> Decompressor<R> {
 			_ => unreachable!(),
 		};
 
-		match self.in_stream.read_u8_from_n_bits(extra_bits) {
-			Ok(extra) => Ok(value as NBltypes + extra),
-			Err(_) => Err(DecompressorError::UnexpectedEOF),
+		if extra_bits > 0 {
+			match self.in_stream.read_u8_from_n_bits(extra_bits) {
+				Ok(extra) => Ok(value as NBltypes + extra),
+				Err(_) => Err(DecompressorError::UnexpectedEOF),
+			}
+		} else {
+			Ok(value as NBltypes)
 		}
 	}
 
@@ -659,7 +676,6 @@ impl<R: Read> Decompressor<R> {
 
 		debug(&format!("NSYM = {:?}", n_sym));
 
-
 		let mut symbols = vec![0; n_sym];
 		for i in 0..n_sym {
 			symbols[i] = match self.in_stream.read_u16_from_n_bits(bit_width) {
@@ -725,6 +741,7 @@ impl<R: Read> Decompressor<R> {
 				vec![true, false],
 				vec![true, true, true, true],
 			];
+
 			let symbols = vec![0, 1, 2, 3, 4, 5];
 			let mut codes = Tree::new();
 
@@ -734,8 +751,6 @@ impl<R: Read> Decompressor<R> {
 
 			codes
 		};
-
-		debug(&format!("Bit Lengths Code {:?}", bit_lengths_code));
 
 		let mut code_lengths = vec![0; symbols.len()];
 		let mut sum = 0usize;
@@ -757,6 +772,10 @@ impl<R: Read> Decompressor<R> {
 
 				if sum == 32 {
 					break;
+				}
+
+				if sum > 32 {
+					return Err(DecompressorError::CodeLengthsChecksum)
 				}
 			}
 		}
@@ -919,13 +938,65 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
+	fn parse_prefix_code_block_types_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let alphabet_size = (self.meta_block.header.n_bltypes_l.unwrap() as usize) + 2;
+
+		Ok(State::PrefixCodeBlockTypesLiterals(
+			match self.parse_prefix_code(alphabet_size) {
+					Ok(prefix_code) => prefix_code,
+					Err(e) => return Err(e),
+			}
+		))
+	}
+
+	fn parse_prefix_code_block_counts_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let alphabet_size = 26;
+
+		debug(&format!("Parsing Prefix Code Block Counts Literals…"));
+
+		Ok(State::PrefixCodeBlockCountsLiterals(
+			match self.parse_prefix_code(alphabet_size) {
+					Ok(prefix_code) => prefix_code,
+					Err(e) => return Err(e),
+			}
+		))
+	}
+
+	fn parse_first_block_count_literals(&mut self) -> result::Result<State, DecompressorError> {
+		let (base_length, extra_bits) = match self.meta_block.prefix_tree_block_counts_literals.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+			Some(symbol @  0... 3) => (    1 + (symbol as BLen)      <<  2,  2usize),
+			Some(symbol @  4... 7) => (   17 + (symbol as BLen -  4) <<  3,  3),
+			Some(symbol @  8...11) => (   49 + (symbol as BLen -  8) <<  4,  4),
+			Some(symbol @ 12...15) => (  113 + (symbol as BLen - 12) <<  5,  5),
+			Some(symbol @ 16...17) => (  241 + (symbol as BLen - 16) <<  6,  6),
+			Some(18) => (  369,  7),
+			Some(19) => (  497,  8),
+			Some(20) => (  753,  9),
+			Some(21) => ( 1265, 10),
+			Some(22) => ( 2289, 11),
+			Some(23) => ( 4337, 12),
+			Some(24) => ( 8433, 13),
+			Some(25) => (16625, 24),
+			Some(_) => unreachable!(),
+			None => return Err(DecompressorError::UnexpectedEOF),
+		};
+
+		debug(&format!("(base_length, extra_bits) = {:?}", (base_length, extra_bits)));
+
+		let block_count = match self.in_stream.read_u32_from_n_bits(extra_bits) {
+			Ok(my_u32) => base_length + my_u32,
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
+		};
+
+		Ok(State::FirstBlockCountLiterals(block_count))
+	}
+
 	fn parse_prefix_codes_literals(&mut self) -> result::Result<State, DecompressorError> {
 		let n_trees_l = self.meta_block.header.n_trees_l.unwrap() as usize;
 		let mut prefix_codes = Vec::with_capacity(n_trees_l);
 		let alphabet_size = 256;
 
 		for _ in 0..n_trees_l {
-
 			prefix_codes.push(match self.parse_prefix_code(alphabet_size) {
 				Ok(prefix_code) => prefix_code,
 				Err(e) => return Err(e),
@@ -1639,14 +1710,50 @@ impl<R: Read> Decompressor<R> {
 					debug(&format!("NBLTYPESL = {:?}", n_bltypes_l));
 
 					self.state = if n_bltypes_l >= 2 {
-						// @TODO parse prefix codes for block type and block count etc.
-						unimplemented!();
+						match self.parse_prefix_code_block_types_literals() {
+							Ok(state) => state,
+							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						}
 					} else {
 						match self.parse_n_bltypes_i() {
 							Ok(state) => state,
 							Err(_) => return Err(DecompressorError::UnexpectedEOF),
 						}
 					}
+				},
+				State::PrefixCodeBlockTypesLiterals((prefix_code, prefix_tree)) => {
+					self.meta_block.header.prefix_code_block_types_literals = Some(prefix_code);
+					self.meta_block.prefix_tree_block_types_literals = Some(prefix_tree);
+
+					debug(&format!("Prefix Code Block Types Literals = {:?}", self.meta_block.header.prefix_code_block_types_literals));
+					debug(&format!("Prefix Tree Block Types Literals = {:?}", self.meta_block.prefix_tree_block_types_literals));
+
+					self.state = match self.parse_prefix_code_block_counts_literals() {
+						Ok(state) => state,
+						Err(e) => return Err(e),
+					};
+				},
+				State::PrefixCodeBlockCountsLiterals((prefix_code, prefix_tree)) => {
+					self.meta_block.header.prefix_code_block_counts_literals = Some(prefix_code);
+					self.meta_block.prefix_tree_block_counts_literals = Some(prefix_tree);
+
+					debug(&format!("Prefix Code Block Counts Literals = {:?}", self.meta_block.header.prefix_code_block_counts_literals));
+					debug(&format!("Prefix Tree Block Counts Literals = {:?}", self.meta_block.prefix_tree_block_counts_literals));
+
+					self.state = match self.parse_first_block_count_literals() {
+						Ok(state) => state,
+						Err(e) => return Err(e),
+					};
+				},
+				State::FirstBlockCountLiterals(blen) => {
+					self.meta_block.blen_l = Some(blen);
+
+					debug(format!("Block count literals = {:?}", blen))
+
+					self.state = match self.parse_n_bltypes_i() {
+						Ok(state) => state,
+						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+					};
 				},
 				State::NBltypesI(n_bltypes_i) => {
 					self.meta_block.header.n_bltypes_i = Some(n_bltypes_i);
