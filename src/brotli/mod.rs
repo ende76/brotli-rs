@@ -1226,7 +1226,7 @@ impl<R: Read> Decompressor<R> {
 
 	fn parse_context_map_literals(&mut self) -> result::Result<State, DecompressorError> {
 		let n_trees = self.meta_block.header.n_trees_l.unwrap();
-		let len = (self.meta_block.header.n_bltypes_l.unwrap() * 64) as usize;
+		let len = self.meta_block.header.n_bltypes_l.unwrap() as usize * 64;
 		match self.parse_context_map(n_trees, len) {
 			Ok(c_map_l) => Ok(State::ContextMapLiterals(c_map_l)),
 			Err(e) => Err(e),
