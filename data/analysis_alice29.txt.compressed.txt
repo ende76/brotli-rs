@@ -1,0 +1,104 @@
+Analysis of alice29.txt.compressed:
+0x5b 0x18 0x52 0x12 0x45 … 0xa0 … 0x3b 0x1c 0xab 0x40 0x0f 0x7d 0x2e 0x8a 0x1a 0xd2 …
+
+Brotli Stream Header
+====================
+0x5b = 0101 1011
+
+1011                # WBITS => decodes to 22
+                    # window size = 1 << WBITS - 16 = 4194288
+
+Brotli Meta-Block Header
+========================
+[0101]
+
+1                   # ISLAST => true => this is the last meta Meta-Block
+0                   # ISLASTEMPTY => false => the Meta-Block is not empty
+
+01                  # MNIBBLES => 1 => MNIBBLES = 5
+
+0x18 0x52 0x12 = 0001 1000 0101 0010 0001 0010
+
+1000 0101 0010 0001 0010
+                    # MLEN - 1 = 152088 => MLEN = 152089
+
+0001                # NBLTYPESL => 2
+
+0x45 = 0100 0101
+
+01                  # simple prefix code
+01                  # NSYM - 1 = 1 => NSYM = 2
+00                  # Symbol 00
+01                  # Symbol 01
+                    # Simple Prefix Tree =
+                    #  0
+                    # /
+                    # \
+                    #  1
+
+0xa0 = 1010 0000
+00                  # complex prefix code, HSKIP = 0
+00                  # Codelength Symbol = 0
+01                  # Codelength Symbol = 3
+01                  # Codelength Symbol = 3
+0x3b = 0011 1011
+110                 # Codelength Symbol = 2
+1110                # Codelength Symbol = 1
+                    # Checksum 32 reached here, code lengths come out as [0, 3, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    # rearrange to [1, 0, 3, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] for symbols 0...17
+                    #  0
+                    # / 4
+                    # \/ 2
+                    #  \/
+                    #   \
+                    #    3
+0x1c = 0001 1100 [0]
+0                   # Symbol 0
+0                   # Symbol 0
+0                   # Symbol 0
+111                 # Symbol 3
+0                   # Symbol 0
+0                   # Symbol 0
+0                   # Symbol 0
+0xab = 1010 1011
+110                 # Symbol 2
+10                  # Symbol 4
+10                  # Symbol 4
+0x40 = 0100 0000 [1]
+10                  # Symbol 4
+0                   # Symbol 0
+0                   # Symbol 0
+0                   # Symbol 0
+0                   # Symbol 0
+0                   # Symbol 0
+10                  # Symbol 4
+0x0f = 0000 1111
+111                 # Symbol 3
+10                  # Symbol 4
+0                   # Symbol 0
+0                   # Symbol 0
+0                   # Symbol 0
+0x7d = 0111 1101
+10                  # Symbol 4
+111                 # Symbol 3
+                    # Checksum 32768, Code lengths come out to [0, 0, 0, 3, 0, 0, 0, 2, 4, 4, 4, 0, 0, 0, 0, 0, 4, 3, 4, 0, 0, 0, 4, 3]
+
+                    #   7
+                    #  / 3
+                    # /\/
+                    # \ \
+                    #  \ 17 23
+                    #   \  / 8
+                    #    \/\/
+                    #     \ \
+                    #      \ 9  10
+                    #       \  /
+                    #        \/\
+                    #         \ 16
+                    #          \  18
+                    #           \/
+                    #            \
+                    #             22
+0x2e = 0010 1110 [011]
+1100                # block count code 10, base length 81, extra bits 4
+0111                # extra bits = 7 => block count = 88

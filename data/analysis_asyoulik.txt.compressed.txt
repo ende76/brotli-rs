@@ -1,0 +1,30 @@
+Analysis of asyoulik.txt.compressed:
+0x5b 0xfa 0xe8 0x11 … 0x51 … 0xc9 0xec 0xab 0x8a 0xb4 0x9d 0x95 0x1e 0x7b 0xe0 0xab …
+
+Brotli Stream Header
+====================
+0x5b = 0101 1011
+
+1011                # WBITS => decodes to 22
+                    # window size = 1 << WBITS - 16 = 4194288
+
+Brotli Meta-Block Header
+========================
+[0101]
+
+1                   # ISLAST => true => this is the last meta Meta-Block
+0                   # ISLASTEMPTY => false => the Meta-Block is not empty
+
+01                  # MNIBBLES => 1 => MNIBBLES = 5
+
+0x11 0xe8 0xfa = 0001 0001 1110 1000 1111 1010
+
+0001 1110 1000 1111 1010
+                    # MLEN - 1 = 125178 => MLEN = 125179
+
+0001                # NBLTYPESL => 2
+
+0x51 = 0101 0001
+
+01                  # simple prefix code
+00                  # NSYM - 1 = 0 => NSYM = 1
