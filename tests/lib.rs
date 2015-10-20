@@ -346,6 +346,25 @@ fn should_decompress_asyoulik_txt() {
 	assert_eq!(expected, decompressed);
 }
 
+#[test]
+/// Brotli: alice29.txt
+/// introduces NBLTYPESI >= 2
+fn should_decompress_alice29_txt() {
+	use std::io::{ Read };
+	use compression::brotli::Decompressor;
+	use compression::bitreader::BitReader;
+
+	let brotli_stream = BitReader::new(std::fs::File::open("data/alice29.txt.compressed").unwrap());
+
+	let mut decompressed = &mut Vec::new();
+	let _ = Decompressor::new(brotli_stream).read_to_end(&mut decompressed);
+
+	let mut expected = &mut Vec::new();
+	let _ = std::fs::File::open("data/alice29.txt").unwrap().read_to_end(&mut expected);
+
+	assert_eq!(expected, decompressed);
+}
+
 
 fn inverse_move_to_front_transform(v: &mut[u8]) {
 	let mut mtf: Vec<u8> = vec![0; 256];
@@ -396,7 +415,7 @@ fn move_to_front_transform(v: &mut[u8]) {
 
 #[test]
 fn should_compose_to_identity() {
-	let mut v: Vec<u8> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 3, 3, 0, 4];
+	let mut v: Vec<u8> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 3, 3, 3, 3, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
 	let expected = v.clone();
 
 	inverse_move_to_front_transform(&mut v);
