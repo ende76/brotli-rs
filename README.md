@@ -1,3 +1,3 @@
-# Compression - A decompressor implementation for the Brotli specification
+# Compression - Brotli decompression in pure, safe Rust
 
-compression provides an implementation of a Brotli decompressor. The struct compression::brotli::Decompressor implements std::io::Read. That way, a consumer can wrap a Brotli-compressed stream in a Decompressor, reading the uncompressed stream conveniently through the Read interface.
+Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consumer is thus able to read a compressed stream with usual convenience.
