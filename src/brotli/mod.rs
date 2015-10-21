@@ -44,57 +44,79 @@ impl<T: Copy + Debug> RingBuffer<T> {
 	fn from_vec(v: Vec<T>) -> RingBuffer<T> {
 		let c = v.len();
 		RingBuffer {
-			buf: v,
-			pos: 0,
+			buf: v.iter().map(|&b| b).rev().collect::<Vec<_>>(),
+			pos: c - 1,
 			cap: c,
 		}
 	}
 
 	/// Creates a new RingBuffer with a max capacity of c.
-	// @TODO make this work to use RingBuffer for output_window
-	// fn with_capacity(c: usize) -> RingBuffer<T> {
-	// 	RingBuffer {
-	// 		buf: Vec::with_capacity(c),
-	// 		pos: 0,
-	// 		cap: c,
-	// 	}
-	// }
+	fn with_capacity(c: usize) -> RingBuffer<T> {
+		RingBuffer {
+			buf: Vec::with_capacity(c),
+			pos: 0,
+			cap: c,
+		}
+	}
 
 	/// Returns a result containing the nth element from the back,
 	/// i.e. the 0th element is the last element that has been pushed.
 	/// Returns RingBufferError::ParameterExceededSize, if n exceeds
 	/// the buffers length or number of stored items.
 	fn nth(&self, n: usize) -> Result<&T, RingBufferError> {
-		if n >= self.buf.len() {
+		let len = self.buf.len();
+
+		// @Note: Uncommenting this line eats performance, even if Debugging is set to None
+		//        because the format string is being non-lazily evaluated, potentially
+		//        iterating over a huge buffer.
+		// debug(&format!("RingBuffer::nth(): {:?}", (self.clone(), self.buf.len(), n)));
+
+		if n >= len {
 			Err(RingBufferError::ParameterExceededSize)
 		} else {
-			Ok(&self.buf[(self.pos + n) % self.buf.len()])
+			Ok(&self.buf[(self.pos + len - n) % len])
 		}
 	}
 
-	// @TODO make this work to use RingBuffer for output_window
-	// fn slice_distance_length(&self, n: usize, len: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
-	// 	let l = self.buf.len();
+	fn slice_distance_length(&self, n: usize, l: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
+		let len = self.buf.len();
 
-	// 	if n >= l {
-	// 		Err(RingBufferError::ParameterExceededSize)
-	// 	} else {
-	// 		println!("{:?}", (self.clone(), self.buf.len(), n, len));
+		if n >= len {
+			Err(RingBufferError::ParameterExceededSize)
+		} else {
+			// @Note: Uncommenting this line eats performance, even if Debugging is set to None
+			//        because the format string is being non-lazily evaluated, potentially
+			//        iterating over a huge buffer.
+			// debug(&format!("RingBuffer::slice_distance_length(): {:?}", (self.clone(), self.buf.len(), n, len)));
 
-	// 		for i in 0..len {
-	// 			buf[i] = self.buf[(self.pos - n + i) % l];
-	// 		}
-	// 		Ok(())
-	// 	}
-	// }
+			for i in 0..l {
+				buf[i] = self.buf[(self.pos + len - n + i) % len];
+			}
+			Ok(())
+		}
+	}
 
 	/// Pushes an item to the end of the ring buffer.
 	fn push(&mut self, item: T) {
-		self.pos = (self.pos + self.buf.len() - 1) % self.buf.len();
-		self.buf[self.pos] = item;
+		let len = self.buf.len();
+		if len < self.cap {
+			self.buf.push(item);
+			self.pos = len;
+		} else {
+			self.pos = (self.pos + 1) % len;
+			self.buf[self.pos] = item;
+		}
 	}
 }
 
+#[test]
+fn should_retrieve_last_item() {
+	let mut buf = RingBuffer::with_capacity(2);
+	let item = 15;
+	buf.push(item);
+
+	assert_eq!(item, *buf.nth(0).unwrap());;
+}
 
 #[derive(Debug, Clone, PartialEq)]
 enum RingBufferError {
@@ -444,7 +466,7 @@ pub struct Decompressor<R: Read> {
 	in_stream: BitReader<R>,
 	header: Header,
 	buf: VecDeque<Literal>,
-	output_window: Option<Vec<Literal>>,
+	output_window: Option<RingBuffer<Literal>>,
 	state: State,
 	meta_block: MetaBlock,
 	count_output: usize,
@@ -735,14 +757,14 @@ impl<R: Read> Decompressor<R> {
 	fn parse_simple_prefix_code(&mut self, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
 		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
 
-		debug(&format!("Bit Width = {:?}", bit_width));
+		// debug(&format!("Bit Width = {:?}", bit_width));
 
 		let n_sym = match self.in_stream.read_u8_from_n_bits(2) {
 			Ok(my_u8) => (my_u8 + 1) as usize,
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		debug(&format!("NSYM = {:?}", n_sym));
+		// debug(&format!("NSYM = {:?}", n_sym));
 
 		let mut symbols = vec![0; n_sym];
 		for i in 0..n_sym {
@@ -752,7 +774,7 @@ impl<R: Read> Decompressor<R> {
 			}
 		}
 
-		debug(&format!("Symbols = {:?}", symbols));
+		// debug(&format!("Symbols = {:?}", symbols));
 
 		let tree_select = match n_sym {
 			4 => match self.in_stream.read_bit() {
@@ -783,8 +805,8 @@ impl<R: Read> Decompressor<R> {
 			_ => unreachable!(),
 		};
 
-		debug(&format!("Sorted Symbols = {:?}", symbols));
-		debug(&format!("Code Lengths = {:?}", code_lengths));
+		// debug(&format!("Sorted Symbols = {:?}", symbols));
+		// debug(&format!("Code Lengths = {:?}", code_lengths));
 
 		Ok((PrefixCode::new_simple(Some(n_sym as u8), Some(symbols.clone()), tree_select),
             huffman::codes_from_lengths_and_symbols(code_lengths, &symbols)))
@@ -834,9 +856,9 @@ impl<R: Read> Decompressor<R> {
 
 				sum += 32 >> code_lengths[i];
 
-				debug(&format!("code length = {:?}", code_lengths[i]));
-				debug(&format!("32 >> code length = {:?}", 32 >> code_lengths[i]));
-				debug(&format!("sum = {:?}", sum));
+				// debug(&format!("code length = {:?}", code_lengths[i]));
+				// debug(&format!("32 >> code length = {:?}", 32 >> code_lengths[i]));
+				// debug(&format!("sum = {:?}", sum));
 
 				if sum == 32 {
 					break;
@@ -848,8 +870,8 @@ impl<R: Read> Decompressor<R> {
 			}
 		}
 
-		debug(&format!("Code Lengths = {:?}", code_lengths));
-		debug(&format!("Symbols = {:?}", symbols));
+		// debug(&format!("Code Lengths = {:?}", code_lengths));
+		// debug(&format!("Symbols = {:?}", symbols));
 
 		code_lengths = vec![code_lengths[4], code_lengths[0], code_lengths[1], code_lengths[2], code_lengths[3], code_lengths[5], code_lengths[7], code_lengths[9], code_lengths[10], code_lengths[11], code_lengths[12], code_lengths[13], code_lengths[14], code_lengths[15], code_lengths[16], code_lengths[17], code_lengths[8], code_lengths[6]];
 		symbols = (0..18).collect::<Vec<_>>();
@@ -866,12 +888,12 @@ impl<R: Read> Decompressor<R> {
 			}
 		};
 
-		debug(&format!("Code Lengths = {:?}", code_lengths));
-		debug(&format!("Symbols = {:?}", symbols));
+		// debug(&format!("Code Lengths = {:?}", code_lengths));
+		// debug(&format!("Symbols = {:?}", symbols));
 
 		let prefix_code_code_lengths = huffman::codes_from_lengths_and_symbols(code_lengths, &symbols);
 
-		debug(&format!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths));
+		// debug(&format!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths));
 
 		let mut actual_code_lengths = Vec::new();
 		let mut sum = 0usize;
@@ -891,7 +913,7 @@ impl<R: Read> Decompressor<R> {
 
 						sum += 32768 >> new_code_length;
 
-						debug(&format!("32768 >> code length == {:?}, sum == {:?}", 32768 >> new_code_length, sum));
+						// debug(&format!("32768 >> code length == {:?}, sum == {:?}", 32768 >> new_code_length, sum));
 
 						if sum == 32768 {
 							break;
@@ -913,7 +935,7 @@ impl<R: Read> Decompressor<R> {
 
 								sum += 32768 >> last_non_zero_codelength;
 
-								debug(&format!("32768 >> code length == {:?}, sum == {:?}", 32768 >> last_non_zero_codelength, sum));
+								// debug(&format!("32768 >> code length == {:?}, sum == {:?}", 32768 >> last_non_zero_codelength, sum));
 
 								if sum == 32768 {
 									break;
@@ -934,7 +956,7 @@ impl<R: Read> Decompressor<R> {
 
 								sum += 32768 >> last_non_zero_codelength;
 
-								debug(&format!("32768 >> code length == {:?}, sum == {:?}", 32768 >> last_non_zero_codelength, sum));
+								// debug(&format!("32768 >> code length == {:?}, sum == {:?}", 32768 >> last_non_zero_codelength, sum));
 
 								if sum == 32768 {
 									break;
@@ -957,7 +979,7 @@ impl<R: Read> Decompressor<R> {
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 
-					debug(&format!("code length = 17, extra bits = {:?}", extra_bits));
+					// debug(&format!("code length = 17, extra bits = {:?}", extra_bits));
 
 
 					last_repeat = match (last_symbol, last_repeat) {
@@ -988,9 +1010,9 @@ impl<R: Read> Decompressor<R> {
 			};
 		}
 
-		debug(&format!(""));
+		// debug(&format!(""));
 
-		debug(&format!("Actual Code Lengths = {:?}", actual_code_lengths));
+		// debug(&format!("Actual Code Lengths = {:?}", actual_code_lengths));
 
 		if actual_code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len() == 1 {
 			// @TODO handle case in lookup from complex prefix code when
@@ -1010,7 +1032,7 @@ impl<R: Read> Decompressor<R> {
 			Err(e) => return Err(e),
 		};
 
-		debug(&format!("Prefix Code Kind = {:?}", prefix_code_kind));
+		// debug(&format!("Prefix Code Kind = {:?}", prefix_code_kind));
 
 		match prefix_code_kind {
 			PrefixCodeKind::Complex(h_skip) => self.parse_complex_prefix_code(h_skip, alphabet_size),
@@ -1088,7 +1110,7 @@ impl<R: Read> Decompressor<R> {
 		// @TODO consider case NSYM == 1, i.e. symbol should be emitted without consuming from stream
 		let symbol = prefix_code.lookup_symbol(&mut self.in_stream);
 
-		debug(&format!("block count symbol = {:?}", symbol));
+		// debug(&format!("block count symbol = {:?}", symbol));
 
 		let (base_length, extra_bits) = match symbol {
 			Some(symbol @  0... 3) => (    1 + ((symbol as BLen)      <<  2),  2usize),
@@ -1108,7 +1130,7 @@ impl<R: Read> Decompressor<R> {
 			None => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		debug(&format!("(base_length, extra_bits) = {:?}", (base_length, extra_bits)));
+		// debug(&format!("(base_length, extra_bits) = {:?}", (base_length, extra_bits)));
 
 		match self.in_stream.read_u32_from_n_bits(extra_bits) {
 			Ok(my_u32) => Ok(base_length + my_u32),
@@ -1198,11 +1220,11 @@ impl<R: Read> Decompressor<R> {
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		debug(&format!("RLEMAX = {:?}", rlemax));
+		// debug(&format!("RLEMAX = {:?}", rlemax));
 
 		let alphabet_size = (rlemax + n_trees as u16) as usize;
 
-		debug(&format!("Alphabet Size = {:?}", alphabet_size));
+		// debug(&format!("Alphabet Size = {:?}", alphabet_size));
 
 		let (_, prefix_tree) = match self.parse_prefix_code(alphabet_size) {
 			Ok(v) => v,
@@ -1217,14 +1239,14 @@ impl<R: Read> Decompressor<R> {
 		while c_pushed < len {
 			match prefix_tree.lookup_symbol(&mut self.in_stream) {
 				Some(run_length_code) if run_length_code > 0 && run_length_code <= rlemax => {
-					debug(&format!("run length code = {:?}", run_length_code));
+					// debug(&format!("run length code = {:?}", run_length_code));
 
 					let repeat = match self.in_stream.read_u16_from_n_bits(run_length_code as usize) {
 						Ok(my_u16) => (1 << run_length_code) + my_u16,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 
-					debug(&format!("repeat = {:?}", repeat));
+					// debug(&format!("repeat = {:?}", repeat));
 
 					for _ in 0..repeat {
 						c_map.push(0);
@@ -1238,14 +1260,14 @@ impl<R: Read> Decompressor<R> {
 				Some(context_id) => {
 					c_map.push(if context_id == 0 { 0 } else { (context_id - rlemax) as u8 });
 
-					debug(&format!("context id == {:?}", if context_id == 0 { 0 } else { (context_id - rlemax) as u8 }));
+					// debug(&format!("context id == {:?}", if context_id == 0 { 0 } else { (context_id - rlemax) as u8 }));
 
 					c_pushed += 1;
 				},
 				None => return Err(DecompressorError::ParseErrorContextMap),
 			}
 
-			debug(&format!("{:?}", (c_pushed, len)));
+			// debug(&format!("{:?}", (c_pushed, len)));
 		}
 
 		let imtf_bit = match self.in_stream.read_bit() {
@@ -1253,7 +1275,7 @@ impl<R: Read> Decompressor<R> {
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		debug(&format!("IMTF BIT = {:?}", imtf_bit));
+		// debug(&format!("IMTF BIT = {:?}", imtf_bit));
 
 		if imtf_bit {
 
@@ -1302,12 +1324,12 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_insert_and_copy_length(&mut self) -> result::Result<State, DecompressorError> {
-		debug(&format!("parse_insert_and_copy_length(): blen_i = {:?}", self.meta_block.blen_i));
+		// debug(&format!("parse_insert_and_copy_length(): blen_i = {:?}", self.meta_block.blen_i));
 
 		match self.meta_block.blen_i {
 			None => {},
 			Some(0) => {
-				debug(&format!("BLENI == 0, parsing switch command for insert and copy length"));
+				// debug(&format!("BLENI == 0, parsing switch command for insert and copy length"));
 
 				match self.parse_block_switch_command_insert_and_copy_lengths() {
 							Ok((block_type, block_count)) => {
@@ -1323,7 +1345,7 @@ impl<R: Read> Decompressor<R> {
 
 		let btype = self.meta_block.btype_i as usize;
 
-		debug(&format!("btype_i = {:?}", btype));
+		// debug(&format!("btype_i = {:?}", btype));
 
 		match self.meta_block.header.prefix_codes_insert_and_copy_lengths.as_ref().unwrap()[btype] {
 			PrefixCode::Simple(PrefixCodeSimple {
@@ -1366,7 +1388,7 @@ impl<R: Read> Decompressor<R> {
 		insert_length_code += 0x07 & (self.meta_block.insert_and_copy_length.unwrap() as u8 >> 3);
 		copy_length_code += 0x07 & self.meta_block.insert_and_copy_length.unwrap() as u8;
 
-		debug(&format!("(insert code, copy code) = {:?}", (insert_length_code, copy_length_code)));
+		// debug(&format!("(insert code, copy code) = {:?}", (insert_length_code, copy_length_code)));
 
 		let (mut insert_length, extra_bits_insert): (InsertLength, _) = match insert_length_code {
 			0...5 => (insert_length_code as InsertLength, 0),
@@ -1428,7 +1450,7 @@ impl<R: Read> Decompressor<R> {
 			}
 		};
 
-		debug(&format!("switch block type code = {:?}", block_type_code));
+		// debug(&format!("switch block type code = {:?}", block_type_code));
 
 		let block_type = match block_type_code {
 			0 => btype_prev,
@@ -1437,14 +1459,14 @@ impl<R: Read> Decompressor<R> {
 			_ => unreachable!(),
 		};
 
-		debug(&format!("block type = {:?}", block_type));
+		// debug(&format!("block type = {:?}", block_type));
 
 		let block_count = match self.parse_block_count(&prefix_tree_counts) {
 			Ok(block_count) => block_count,
 			Err(e) => return Err(e),
 		};
 
-		debug(&format!("block count = {:?}", block_count));
+		// debug(&format!("block count = {:?}", block_count));
 
 		Ok((block_type, block_count))
 	}
@@ -1462,7 +1484,7 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_block_switch_command_insert_and_copy_lengths(&mut self) -> result::Result<BlockSwitch, DecompressorError> {
-		debug(&format!("Parsing block switch command insert and copy lengths"));
+		// debug(&format!("Parsing block switch command insert and copy lengths"));
 		let prefix_code = self.meta_block.header.prefix_code_block_types_insert_and_copy_lengths.as_ref().unwrap().clone();
 		let prefix_tree_types = self.meta_block.prefix_tree_block_types_insert_and_copy_lengths.as_ref().unwrap().clone();
 		let btype = self.meta_block.btype_i;
@@ -1492,7 +1514,7 @@ impl<R: Read> Decompressor<R> {
 		let mut literals = vec![0; insert_length];
 
 		for i in 0..insert_length {
-			debug(&format!("parse_insert_literals(): blen_l = {:?}", self.meta_block.blen_l));
+			// debug(&format!("parse_insert_literals(): blen_l = {:?}", self.meta_block.blen_l));
 
 			match self.meta_block.blen_l {
 				None => {},
@@ -1511,8 +1533,8 @@ impl<R: Read> Decompressor<R> {
 			let btype = self.meta_block.btype_l as usize;
 			let context_mode = self.meta_block.context_modes_literals.as_ref().unwrap()[btype];
 
-			debug(&format!("[p1, p2] = {:?}", self.literal_buf));
-			debug(&format!("Context Mode = {:?}", context_mode));
+			// debug(&format!("[p1, p2] = {:?}", self.literal_buf));
+			// debug(&format!("Context Mode = {:?}", context_mode));
 
 			let cid = match context_mode {
 				0 => {
@@ -1540,13 +1562,13 @@ impl<R: Read> Decompressor<R> {
 				_ => unreachable!(),
 			};
 
-			debug(&format!("(btype, cid) = {:?}", (btype, cid)));
+			// debug(&format!("(btype, cid) = {:?}", (btype, cid)));
 
 			let index = self.meta_block.header.c_map_l.as_ref().unwrap()[btype * 64 + cid as usize] as usize;
 
-			debug(&format!("global bit pos = {:?}", self.in_stream.global_bit_pos));
+			// debug(&format!("global bit pos = {:?}", self.in_stream.global_bit_pos));
 
-			debug(&format!("literal prefix code index = {:?}", index));
+			// debug(&format!("literal prefix code index = {:?}", index));
 
 			literals[i] = match self.meta_block.header.prefix_codes_literals.as_ref().unwrap()[index] {
 				PrefixCode::Simple(PrefixCodeSimple {
@@ -1569,7 +1591,7 @@ impl<R: Read> Decompressor<R> {
 				_ => unreachable!(),
 			};
 
-			debug(&format!("Literal = {:?}", String::from_utf8(vec![literals[i]])));
+			// debug(&format!("Literal = {:?}", String::from_utf8(vec![literals[i]])));
 
 			self.literal_buf.push(literals[i]);
 		}
@@ -1578,7 +1600,7 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_distance_code(&mut self) -> result::Result<State, DecompressorError> {
-		debug(&format!("parse_distance_code(): blen_d = {:?}", self.meta_block.blen_d));
+		// debug(&format!("parse_distance_code(): blen_d = {:?}", self.meta_block.blen_d));
 
 		// check for implicit distance 0 ([…]"as indicated by the insert-and-copy length code")
 		match self.meta_block.distance {
@@ -1610,8 +1632,8 @@ impl<R: Read> Decompressor<R> {
 
 		let index = self.meta_block.header.c_map_d.as_ref().unwrap()[self.meta_block.btype_d as usize * 4 + cid as usize] as usize;
 
-		debug(&format!("distance prefix code index = {:?}", index));
-		debug(&format!("distance prefix code = {:?}", self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index]));
+		// debug(&format!("distance prefix code index = {:?}", index));
+		// debug(&format!("distance prefix code = {:?}", self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index]));
 
 		let distance_code = match self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index] {
 			PrefixCode::Simple(PrefixCodeSimple {
@@ -1663,38 +1685,38 @@ impl<R: Read> Decompressor<R> {
 				let (n_direct, n_postfix) = (self.meta_block.header.n_direct.unwrap() as DistanceCode, self.meta_block.header.n_postfix.unwrap());
 				let ndistbits = 1 + ((dcode - (n_direct) - 16) >> (n_postfix + 1));
 
-				debug(&format!("NDISTBITS = {:?}", ndistbits));
+				// debug(&format!("NDISTBITS = {:?}", ndistbits));
 
 				let dextra = match self.in_stream.read_u32_from_n_bits(ndistbits as usize) {
 					Ok(my_u32) => my_u32,
 					Err(_) => return Err(DecompressorError::UnexpectedEOF),
 				};
 
-				debug(&format!("DEXTRA = {:?}", dextra));
+				// debug(&format!("DEXTRA = {:?}", dextra));
 
 				let hcode = (dcode - n_direct - 16) >> n_postfix;
 
-				debug(&format!("HCODE = {:?}", hcode));
+				// debug(&format!("HCODE = {:?}", hcode));
 
 				let postfix_mask = (1 << n_postfix) - 1;
 				let lcode = (dcode - n_direct - 16) & postfix_mask;
 
-				debug(&format!("LCODE = {:?}", lcode));
+				// debug(&format!("LCODE = {:?}", lcode));
 
 				let offset = ((2 + (hcode & 1)) << ndistbits) - 4;
 
-				debug(&format!("Offset = {:?}", offset));
+				// debug(&format!("Offset = {:?}", offset));
 
 				let distance = ((offset + dextra) << n_postfix) + lcode + n_direct + 1;
 
-				debug(&format!("Distance = {:?}", distance));
+				// debug(&format!("Distance = {:?}", distance));
 
 				distance
 			},
 			None => unreachable!()
 		};
 
-		debug(&format!("(dc, db, d) = {:?}", (self.meta_block.distance_code, self.distance_buf.clone(), distance)));
+		// debug(&format!("(dc, db, d) = {:?}", (self.meta_block.distance_code, self.distance_buf.clone(), distance)));
 
 		if self.meta_block.distance_code.unwrap() > 0 && distance as usize <= cmp::min(self.header.window_size.unwrap(), self.count_output) {
 			self.distance_buf.push(distance);
@@ -1715,10 +1737,15 @@ impl<R: Read> Decompressor<R> {
 			let mut window = vec![0; copy_length];
 			let l = cmp::min(distance, copy_length);
 
-			for i in (count_output + window_size - distance)..(count_output + window_size - distance + l) {
-
-				window[i - (count_output + window_size - distance)] = output_window[i % window_size];
+			match output_window.slice_distance_length(distance - 1, l, &mut window) {
+				Ok(()) => {},
+				Err(_) => return Err(DecompressorError::RingBufferError),
 			}
+
+			// for i in (count_output + window_size - distance)..(count_output + window_size - distance + l) {
+
+			// 	window[i - (count_output + window_size - distance)] = output_window[i % window_size];
+			// }
 
 			for i in l..copy_length {
 
@@ -1747,8 +1774,8 @@ impl<R: Read> Decompressor<R> {
 				return Err(DecompressorError::InvalidTransformId);
 			}
 
-			debug(&format!("base word = {:?}", String::from_utf8(Vec::from(base_word))));
-			debug(&format!("transform id = {:?}", transform_id));
+			// debug(&format!("base word = {:?}", String::from_utf8(Vec::from(base_word))));
+			// debug(&format!("transform id = {:?}", transform_id));
 
 			fn uppercase_all(base_word: &[u8]) -> Vec<u8> {
 				Vec::from(String::from_utf8(Vec::from(base_word)).unwrap().to_uppercase().as_bytes())
@@ -1796,9 +1823,9 @@ impl<R: Read> Decompressor<R> {
 				State::WBits(wbits) => {
 					self.header.wbits = Some(wbits);
 					self.header.window_size = Some((1 << wbits) - 16);
-					self.output_window = Some(vec![0; self.header.window_size.unwrap()]);
+					self.output_window = Some(RingBuffer::with_capacity(self.header.window_size.unwrap()));
 
-					debug(&format!("(WBITS, Window Size) = {:?}", (wbits, self.header.window_size)));
+					// debug(&format!("(WBITS, Window Size) = {:?}", (wbits, self.header.window_size)));
 
 					self.state = State::HeaderEnd;
 				},
@@ -1816,7 +1843,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsLast(true) => {
 					self.meta_block.header.is_last = Some(true);
 
-					debug(&format!("ISLAST = true"));
+					// debug(&format!("ISLAST = true"));
 
 					self.state = match self.parse_is_last_empty() {
 						Ok(state) => state,
@@ -1826,7 +1853,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsLast(false) => {
 					self.meta_block.header.is_last = Some(false);
 
-					debug(&format!("ISLAST = false"));
+					// debug(&format!("ISLAST = false"));
 
 					self.state = match self.parse_m_nibbles() {
 						Ok(state) => state,
@@ -1836,7 +1863,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsLastEmpty(true) => {
 					self.meta_block.header.is_last_empty = Some(true);
 
-					debug(&format!("ISLASTEMPTY = true"));
+					// debug(&format!("ISLASTEMPTY = true"));
 
 
 					self.state = State::StreamEnd;
@@ -1844,7 +1871,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsLastEmpty(false) => {
 					self.meta_block.header.is_last_empty = Some(false);
 
-					debug(&format!("ISLASTEMPTY = false"));
+					// debug(&format!("ISLASTEMPTY = false"));
 
 					self.state = match self.parse_m_nibbles() {
 						Ok(state) => state,
@@ -1858,7 +1885,7 @@ impl<R: Read> Decompressor<R> {
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					}
 
-					debug(&format!("MNibbles = 0"));
+					// debug(&format!("MNibbles = 0"));
 
 					self.meta_block.header.m_nibbles = Some(0);
 
@@ -1870,7 +1897,7 @@ impl<R: Read> Decompressor<R> {
 				State::MNibbles(m_nibbles) => {
 					self.meta_block.header.m_nibbles = Some(m_nibbles);
 
-					debug(&format!("MNibbles = {:?}", m_nibbles));
+					// debug(&format!("MNibbles = {:?}", m_nibbles));
 
 					self.state = match self.parse_m_len() {
 						Ok(state) => state,
@@ -1880,7 +1907,7 @@ impl<R: Read> Decompressor<R> {
 				State::MSkipBytes(0) => {
 					self.meta_block.header.m_skip_bytes = Some(0);
 
-					debug(&format!("MSKIPBYTES = 0"));
+					// debug(&format!("MSKIPBYTES = 0"));
 
 					match self.in_stream.read_u8_from_byte_tail() {
 						Ok(0) => {},
@@ -1893,7 +1920,7 @@ impl<R: Read> Decompressor<R> {
 				State::MSkipBytes(m_skip_bytes) => {
 					self.meta_block.header.m_skip_bytes = Some(m_skip_bytes);
 
-					debug(&format!("MSKIPBYTES = {:?}", m_skip_bytes));
+					// debug(&format!("MSKIPBYTES = {:?}", m_skip_bytes));
 
 					self.state = match self.parse_m_skip_len() {
 						Ok(state) => state,
@@ -1903,7 +1930,7 @@ impl<R: Read> Decompressor<R> {
 				State::MSkipLen(m_skip_len) => {
 					self.meta_block.header.m_skip_len = Some(m_skip_len);
 
-					debug(&format!("MSKIPLEN = {:?}", m_skip_len));
+					// debug(&format!("MSKIPLEN = {:?}", m_skip_len));
 
 					match self.in_stream.read_u8_from_byte_tail() {
 						Ok(0) => {},
@@ -1921,7 +1948,7 @@ impl<R: Read> Decompressor<R> {
 				State::MLen(m_len) => {
 					self.meta_block.header.m_len = Some(m_len);
 
-					debug(&format!("MLEN = {:?}", m_len));
+					// debug(&format!("MLEN = {:?}", m_len));
 
 					self.state = match (&self.meta_block.header.is_last.unwrap(), &self.header.bltype_codes) {
 						(&false, _) => match self.parse_is_uncompressed() {
@@ -1941,7 +1968,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsUncompressed(true) => {
 					self.meta_block.header.is_uncompressed = Some(true);
 
-					debug(&format!("UNCOMPRESSED = true"));
+					// debug(&format!("UNCOMPRESSED = true"));
 
 					match self.in_stream.read_u8_from_byte_tail() {
 						Ok(0) => {},
@@ -1957,7 +1984,7 @@ impl<R: Read> Decompressor<R> {
 				State::MLenLiterals(m_len_literals) => {
 					for literal in m_len_literals {
 						self.buf.push_front(literal);
-						self.output_window.as_mut().unwrap()[self.count_output % self.header.window_size.unwrap() as usize] = literal;
+						self.output_window.as_mut().unwrap().push(literal);
 						self.count_output += 1;
 					}
 
@@ -1967,7 +1994,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsUncompressed(false) => {
 					self.meta_block.header.is_uncompressed = Some(false);
 
-					debug(&format!("UNCOMPRESSED = false"));
+					// debug(&format!("UNCOMPRESSED = false"));
 
 					unimplemented!();
 				},
@@ -1982,7 +2009,7 @@ impl<R: Read> Decompressor<R> {
 				State::NBltypesL(n_bltypes_l) => {
 					self.meta_block.header.n_bltypes_l = Some(n_bltypes_l);
 
-					debug(&format!("NBLTYPESL = {:?}", n_bltypes_l));
+					// debug(&format!("NBLTYPESL = {:?}", n_bltypes_l));
 
 					self.state = if n_bltypes_l >= 2 {
 						match self.parse_prefix_code_block_types_literals() {
@@ -2000,8 +2027,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_code_block_types_literals = Some(prefix_code);
 					self.meta_block.prefix_tree_block_types_literals = Some(prefix_tree);
 
-					debug(&format!("Prefix Code Block Types Literals = {:?}", self.meta_block.header.prefix_code_block_types_literals));
-					debug(&format!("Prefix Tree Block Types Literals = {:?}", self.meta_block.prefix_tree_block_types_literals));
+					// debug(&format!("Prefix Code Block Types Literals = {:?}", self.meta_block.header.prefix_code_block_types_literals));
+					// debug(&format!("Prefix Tree Block Types Literals = {:?}", self.meta_block.prefix_tree_block_types_literals));
 
 					self.state = match self.parse_prefix_code_block_counts_literals() {
 						Ok(state) => state,
@@ -2012,8 +2039,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_code_block_counts_literals = Some(prefix_code);
 					self.meta_block.prefix_tree_block_counts_literals = Some(prefix_tree);
 
-					debug(&format!("Prefix Code Block Counts Literals = {:?}", self.meta_block.header.prefix_code_block_counts_literals));
-					debug(&format!("Prefix Tree Block Counts Literals = {:?}", self.meta_block.prefix_tree_block_counts_literals));
+					// debug(&format!("Prefix Code Block Counts Literals = {:?}", self.meta_block.header.prefix_code_block_counts_literals));
+					// debug(&format!("Prefix Tree Block Counts Literals = {:?}", self.meta_block.prefix_tree_block_counts_literals));
 
 					self.state = match self.parse_first_block_count_literals() {
 						Ok(state) => state,
@@ -2023,7 +2050,7 @@ impl<R: Read> Decompressor<R> {
 				State::FirstBlockCountLiterals(blen) => {
 					self.meta_block.blen_l = Some(blen);
 
-					debug(&format!("Block count literals = {:?}", blen));
+					// debug(&format!("Block count literals = {:?}", blen));
 
 					self.state = match self.parse_n_bltypes_i() {
 						Ok(state) => state,
@@ -2033,7 +2060,7 @@ impl<R: Read> Decompressor<R> {
 				State::NBltypesI(n_bltypes_i) => {
 					self.meta_block.header.n_bltypes_i = Some(n_bltypes_i);
 
-					debug(&format!("NBLTYPESI = {:?}", n_bltypes_i));
+					// debug(&format!("NBLTYPESI = {:?}", n_bltypes_i));
 
 					self.state = if n_bltypes_i >= 2 {
 						match self.parse_prefix_code_block_types_insert_and_copy_lengths() {
@@ -2051,8 +2078,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_code_block_types_insert_and_copy_lengths = Some(prefix_code);
 					self.meta_block.prefix_tree_block_types_insert_and_copy_lengths = Some(prefix_tree);
 
-					debug(&format!("Prefix Code Block Types Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_block_types_insert_and_copy_lengths));
-					debug(&format!("Prefix Tree Block Types Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_block_types_insert_and_copy_lengths));
+					// debug(&format!("Prefix Code Block Types Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_block_types_insert_and_copy_lengths));
+					// debug(&format!("Prefix Tree Block Types Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_block_types_insert_and_copy_lengths));
 
 					self.state = match self.parse_prefix_code_block_counts_insert_and_copy_lengths() {
 						Ok(state) => state,
@@ -2063,8 +2090,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_code_block_counts_insert_and_copy_lengths = Some(prefix_code);
 					self.meta_block.prefix_tree_block_counts_insert_and_copy_lengths = Some(prefix_tree);
 
-					debug(&format!("Prefix Code Block Counts Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_block_counts_insert_and_copy_lengths));
-					debug(&format!("Prefix Tree Block Counts Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_block_counts_insert_and_copy_lengths));
+					// debug(&format!("Prefix Code Block Counts Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_block_counts_insert_and_copy_lengths));
+					// debug(&format!("Prefix Tree Block Counts Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_block_counts_insert_and_copy_lengths));
 
 					self.state = match self.parse_first_block_count_insert_and_copy_lengths() {
 						Ok(state) => state,
@@ -2074,7 +2101,7 @@ impl<R: Read> Decompressor<R> {
 				State::FirstBlockCountInsertAndCopyLengths(blen) => {
 					self.meta_block.blen_i = Some(blen);
 
-					debug(&format!("Block count insert and copy lengths = {:?}", blen));
+					// debug(&format!("Block count insert and copy lengths = {:?}", blen));
 
 					self.state = match self.parse_n_bltypes_d() {
 						Ok(state) => state,
@@ -2084,7 +2111,7 @@ impl<R: Read> Decompressor<R> {
 				State::NBltypesD(n_bltypes_d) => {
 					self.meta_block.header.n_bltypes_d = Some(n_bltypes_d);
 
-					debug(&format!("NBLTYPESD = {:?}", n_bltypes_d));
+					// debug(&format!("NBLTYPESD = {:?}", n_bltypes_d));
 
 					self.state = if n_bltypes_d >= 2 {
 						match self.parse_prefix_code_block_types_distances() {
@@ -2102,8 +2129,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_code_block_types_distances = Some(prefix_code);
 					self.meta_block.prefix_tree_block_types_distances = Some(prefix_tree);
 
-					debug(&format!("Prefix Code Block Types Distances = {:?}", self.meta_block.header.prefix_code_block_types_distances));
-					debug(&format!("Prefix Tree Block Types Distances = {:?}", self.meta_block.prefix_tree_block_types_distances));
+					// debug(&format!("Prefix Code Block Types Distances = {:?}", self.meta_block.header.prefix_code_block_types_distances));
+					// debug(&format!("Prefix Tree Block Types Distances = {:?}", self.meta_block.prefix_tree_block_types_distances));
 
 					self.state = match self.parse_prefix_code_block_counts_distances() {
 						Ok(state) => state,
@@ -2114,8 +2141,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_code_block_counts_distances = Some(prefix_code);
 					self.meta_block.prefix_tree_block_counts_distances = Some(prefix_tree);
 
-					debug(&format!("Prefix Code Block Counts Distances = {:?}", self.meta_block.header.prefix_code_block_counts_distances));
-					debug(&format!("Prefix Tree Block Counts Distances = {:?}", self.meta_block.prefix_tree_block_counts_distances));
+					// debug(&format!("Prefix Code Block Counts Distances = {:?}", self.meta_block.header.prefix_code_block_counts_distances));
+					// debug(&format!("Prefix Tree Block Counts Distances = {:?}", self.meta_block.prefix_tree_block_counts_distances));
 
 					self.state = match self.parse_first_block_count_distances() {
 						Ok(state) => state,
@@ -2125,7 +2152,7 @@ impl<R: Read> Decompressor<R> {
 				State::FirstBlockCountDistances(blen) => {
 					self.meta_block.blen_d = Some(blen);
 
-					debug(&format!("Block count distances = {:?}", blen));
+					// debug(&format!("Block count distances = {:?}", blen));
 
 					self.state = match self.parse_n_postfix() {
 						Ok(state) => state,
@@ -2135,7 +2162,7 @@ impl<R: Read> Decompressor<R> {
 				State::NPostfix(n_postfix) => {
 					self.meta_block.header.n_postfix = Some(n_postfix);
 
-					debug(&format!("NPOSTFIX = {:?}", n_postfix));
+					// debug(&format!("NPOSTFIX = {:?}", n_postfix));
 
 					self.state = match self.parse_n_direct() {
 						Ok(state) => state,
@@ -2145,7 +2172,7 @@ impl<R: Read> Decompressor<R> {
 				State::NDirect(n_direct) => {
 					self.meta_block.header.n_direct = Some(n_direct);
 
-					debug(&format!("NDIRECT = {:?}", n_direct));
+					// debug(&format!("NDIRECT = {:?}", n_direct));
 
 					self.state = match self.parse_context_modes_literals() {
 						Ok(state) => state,
@@ -2155,7 +2182,7 @@ impl<R: Read> Decompressor<R> {
 				State::ContextModesLiterals(context_modes) => {
 					self.meta_block.context_modes_literals = Some(context_modes);
 
-					debug(&format!("Context Modes Literals = {:?}", self.meta_block.context_modes_literals));
+					// debug(&format!("Context Modes Literals = {:?}", self.meta_block.context_modes_literals));
 
 					self.state = match self.parse_n_trees_l() {
 						Ok(state) => state,
@@ -2166,7 +2193,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.n_trees_l = Some(n_trees_l);
 					self.meta_block.header.c_map_l = Some(vec![0; 64 * self.meta_block.header.n_bltypes_l.unwrap() as usize]);
 
-					debug(&format!("NTREESL = {:?}", n_trees_l));
+					// debug(&format!("NTREESL = {:?}", n_trees_l));
 
 					self.state = if n_trees_l >= 2 {
 						match self.parse_context_map_literals() {
@@ -2183,7 +2210,7 @@ impl<R: Read> Decompressor<R> {
 				State::ContextMapLiterals(c_map_l) => {
 					self.meta_block.header.c_map_l = Some(c_map_l);
 
-					debug(&format!("CMAPL = {:?}", self.meta_block.header.c_map_l));
+					// debug(&format!("CMAPL = {:?}", self.meta_block.header.c_map_l));
 
 					self.state = match self.parse_n_trees_d() {
 						Ok(state) => state,
@@ -2194,7 +2221,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.n_trees_d = Some(n_trees_d);
 					self.meta_block.header.c_map_d = Some(vec![0; 4 * self.meta_block.header.n_bltypes_d.unwrap() as usize]);
 
-					debug(&format!("NTREESD = {:?}", n_trees_d));
+					// debug(&format!("NTREESD = {:?}", n_trees_d));
 
 					self.state = if n_trees_d >= 2 {
 						match self.parse_context_map_distances() {
@@ -2211,7 +2238,7 @@ impl<R: Read> Decompressor<R> {
 				State::ContextMapDistances(c_map_d) => {
 					self.meta_block.header.c_map_d = Some(c_map_d);
 
-					debug(&format!("CMAPD = {:?}", self.meta_block.header.c_map_d));
+					// debug(&format!("CMAPD = {:?}", self.meta_block.header.c_map_d));
 
 					self.state = match self.parse_prefix_codes_literals() {
 						Ok(state) => state,
@@ -2224,8 +2251,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_codes_literals = Some(prefix_codes);
 					self.meta_block.prefix_trees_literals = Some(prefix_trees);
 
-					debug(&format!("Prefix Codes Literals = {:?}", self.meta_block.header.prefix_codes_literals));
-					debug(&format!("Prefix Trees Literals = {:?}", self.meta_block.prefix_trees_literals));
+					// debug(&format!("Prefix Codes Literals = {:?}", self.meta_block.header.prefix_codes_literals));
+					// debug(&format!("Prefix Trees Literals = {:?}", self.meta_block.prefix_trees_literals));
 
 					self.state = match self.parse_prefix_codes_insert_and_copy_lengths() {
 						Ok(state) => state,
@@ -2238,8 +2265,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_codes_insert_and_copy_lengths = Some(prefix_codes);
 					self.meta_block.prefix_trees_insert_and_copy_lengths = Some(prefix_trees);
 
-					debug(&format!("Prefix Codes Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_codes_insert_and_copy_lengths));
-					debug(&format!("Prefix Trees Insert And Copy Lengths = {:?}", self.meta_block.prefix_trees_insert_and_copy_lengths));
+					// debug(&format!("Prefix Codes Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_codes_insert_and_copy_lengths));
+					// debug(&format!("Prefix Trees Insert And Copy Lengths = {:?}", self.meta_block.prefix_trees_insert_and_copy_lengths));
 
 					self.state = match self.parse_prefix_codes_distances() {
 						Ok(state) => state,
@@ -2252,8 +2279,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.prefix_codes_distances = Some(prefix_codes);
 					self.meta_block.prefix_trees_distances = Some(prefix_trees);
 
-					debug(&format!("Prefix Codes Distances = {:?}", self.meta_block.header.prefix_codes_distances));
-					debug(&format!("Prefix Trees Distances = {:?}", self.meta_block.prefix_trees_distances));
+					// debug(&format!("Prefix Codes Distances = {:?}", self.meta_block.header.prefix_codes_distances));
+					// debug(&format!("Prefix Trees Distances = {:?}", self.meta_block.prefix_trees_distances));
 
 					self.state = State::DataMetaBlockBegin;
 				},
@@ -2271,7 +2298,7 @@ impl<R: Read> Decompressor<R> {
 						_ => None,
 					};
 
-					debug(&format!("Insert And Copy Length = {:?}", insert_and_copy_length));
+					// debug(&format!("Insert And Copy Length = {:?}", insert_and_copy_length));
 
 					self.state = match self.decode_insert_and_copy_length() {
 						Ok(state) => state,
@@ -2286,7 +2313,7 @@ impl<R: Read> Decompressor<R> {
 						},
 					};
 
-					debug(&format!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length));
+					// debug(&format!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length));
 
 					self.state = match self.parse_insert_literals() {
 						Ok(state) => state,
@@ -2296,7 +2323,7 @@ impl<R: Read> Decompressor<R> {
 				State::InsertLiterals(insert_literals) => {
 					for literal in insert_literals {
 						self.buf.push_front(literal);
-						self.output_window.as_mut().unwrap()[self.count_output % self.header.window_size.unwrap() as usize] = literal;
+						self.output_window.as_mut().unwrap().push(literal);
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
 					}
@@ -2317,7 +2344,7 @@ impl<R: Read> Decompressor<R> {
 				State::DistanceCode(distance_code) => {
 					self.meta_block.distance_code = Some(distance_code);
 
-					debug(&format!("Distance Code = {:?}", distance_code));
+					// debug(&format!("Distance Code = {:?}", distance_code));
 
 					self.state = match self.decode_distance() {
 						Ok(state) => state,
@@ -2327,7 +2354,7 @@ impl<R: Read> Decompressor<R> {
 				State::Distance(distance) => {
 					self.meta_block.distance = Some(distance);
 
-					debug(&format!("Distance = {:?}", distance));
+					// debug(&format!("Distance = {:?}", distance));
 
 					self.state = match self.copy_literals() {
 						Ok(state) => state,
@@ -2339,9 +2366,9 @@ impl<R: Read> Decompressor<R> {
 						self.buf.push_front(literal);
 						self.literal_buf.push(literal);
 
-						debug(&format!("copy literal = {:?}", String::from_utf8(vec![literal])));
+						// debug(&format!("copy literal = {:?}", String::from_utf8(vec![literal])));
 
-						self.output_window.as_mut().unwrap()[self.count_output % self.header.window_size.unwrap() as usize] = literal;
+						self.output_window.as_mut().unwrap().push(literal);
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
 					}
