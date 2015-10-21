@@ -44,57 +44,73 @@ impl<T: Copy + Debug> RingBuffer<T> {
 	fn from_vec(v: Vec<T>) -> RingBuffer<T> {
 		let c = v.len();
 		RingBuffer {
-			buf: v,
-			pos: 0,
+			buf: v.iter().map(|&b| b).rev().collect::<Vec<_>>(),
+			pos: c - 1,
 			cap: c,
 		}
 	}
 
 	/// Creates a new RingBuffer with a max capacity of c.
-	// @TODO make this work to use RingBuffer for output_window
-	// fn with_capacity(c: usize) -> RingBuffer<T> {
-	// 	RingBuffer {
-	// 		buf: Vec::with_capacity(c),
-	// 		pos: 0,
-	// 		cap: c,
-	// 	}
-	// }
+	fn with_capacity(c: usize) -> RingBuffer<T> {
+		RingBuffer {
+			buf: Vec::with_capacity(c),
+			pos: 0,
+			cap: c,
+		}
+	}
 
 	/// Returns a result containing the nth element from the back,
 	/// i.e. the 0th element is the last element that has been pushed.
 	/// Returns RingBufferError::ParameterExceededSize, if n exceeds
 	/// the buffers length or number of stored items.
 	fn nth(&self, n: usize) -> Result<&T, RingBufferError> {
-		if n >= self.buf.len() {
+		let len = self.buf.len();
+
+		debug(&format!("RingBuffer::nth(): {:?}", (self.clone(), self.buf.len(), n)));
+
+		if n >= len {
 			Err(RingBufferError::ParameterExceededSize)
 		} else {
-			Ok(&self.buf[(self.pos + n) % self.buf.len()])
+			Ok(&self.buf[(self.pos + len - n) % len])
 		}
 	}
 
-	// @TODO make this work to use RingBuffer for output_window
-	// fn slice_distance_length(&self, n: usize, len: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
-	// 	let l = self.buf.len();
+	fn slice_distance_length(&self, n: usize, l: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
+		let len = self.buf.len();
 
-	// 	if n >= l {
-	// 		Err(RingBufferError::ParameterExceededSize)
-	// 	} else {
-	// 		println!("{:?}", (self.clone(), self.buf.len(), n, len));
+		if n >= len {
+			Err(RingBufferError::ParameterExceededSize)
+		} else {
+			debug(&format!("RingBuffer::slice_distance_length(): {:?}", (self.clone(), self.buf.len(), n, len)));
 
-	// 		for i in 0..len {
-	// 			buf[i] = self.buf[(self.pos - n + i) % l];
-	// 		}
-	// 		Ok(())
-	// 	}
-	// }
+			for i in 0..l {
+				buf[i] = self.buf[(self.pos + len - n + i) % len];
+			}
+			Ok(())
+		}
+	}
 
 	/// Pushes an item to the end of the ring buffer.
 	fn push(&mut self, item: T) {
-		self.pos = (self.pos + self.buf.len() - 1) % self.buf.len();
-		self.buf[self.pos] = item;
+		let len = self.buf.len();
+		if len < self.cap {
+			self.buf.push(item);
+			self.pos = len;
+		} else {
+			self.pos = (self.pos + 1) % len;
+			self.buf[self.pos] = item;
+		}
 	}
 }
 
+#[test]
+fn should_retrieve_last_item() {
+	let mut buf = RingBuffer::with_capacity(2);
+	let item = 15;
+	buf.push(item);
+
+	assert_eq!(item, *buf.nth(0).unwrap());;
+}
 
 #[derive(Debug, Clone, PartialEq)]
 enum RingBufferError {
@@ -1714,6 +1730,11 @@ impl<R: Read> Decompressor<R> {
 		if distance <=  max_allowed_distance {
 			let mut window = vec![0; copy_length];
 			let l = cmp::min(distance, copy_length);
+
+			// match output_window.slice_distance_length(distance - 1, l, &mut window) {
+			// 	Ok(()) => {},
+			// 	Err(_) => return Err(DecompressorError::RingBufferError),
+			// }
 
 			for i in (count_output + window_size - distance)..(count_output + window_size - distance + l) {
 
