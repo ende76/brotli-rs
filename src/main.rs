@@ -5,13 +5,13 @@ fn main() {
 	use compression::brotli::Decompressor;
 	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(std::fs::File::open("data/plrabn12.txt.compressed").unwrap());
+	let brotli_stream = BitReader::new(std::fs::File::open("data/ukkonooa.compressed").unwrap());
 
 	let mut decompressed = &mut Vec::new();
 	let _ = Decompressor::new(brotli_stream).read_to_end(&mut decompressed);
 
 	let mut expected = &mut Vec::new();
-	let _ = std::fs::File::open("data/plrabn12.txt").unwrap().read_to_end(&mut expected);
+	let _ = std::fs::File::open("data/ukkonooa").unwrap().read_to_end(&mut expected);
 
 	assert_eq!(expected, decompressed);
 

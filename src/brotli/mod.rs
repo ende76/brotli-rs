@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use std::cmp;
 use std::error::Error;
 use std::fmt;
-use std::fmt::{ Display, Formatter };
+use std::fmt::{ Debug, Display, Formatter };
 use std::io;
 use std::io::Read;
 use std::result;
@@ -29,19 +29,41 @@ fn debug(msg: &str) {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct RingBuffer<T> {
+/// RingBuffer to store elements in a fixed size list, overwriting
+/// the oldest elements when its capacity is full.
+struct RingBuffer<T: Copy + Debug> {
 	buf: Vec<T>,
 	pos: usize,
+	cap: usize,
 }
 
-impl<T> RingBuffer<T> {
+impl<T: Copy + Debug> RingBuffer<T> {
+	/// Creates a new RingBuffer populated with the elements in v,
+	/// with capacity == v.len().
+	/// Takes ownership of v.
 	fn from_vec(v: Vec<T>) -> RingBuffer<T> {
-		RingBuffer{
+		let c = v.len();
+		RingBuffer {
 			buf: v,
 			pos: 0,
+			cap: c,
 		}
 	}
 
+	/// Creates a new RingBuffer with a max capacity of c.
+	// @TODO make this work to use RingBuffer for output_window
+	// fn with_capacity(c: usize) -> RingBuffer<T> {
+	// 	RingBuffer {
+	// 		buf: Vec::with_capacity(c),
+	// 		pos: 0,
+	// 		cap: c,
+	// 	}
+	// }
+
+	/// Returns a result containing the nth element from the back,
+	/// i.e. the 0th element is the last element that has been pushed.
+	/// Returns RingBufferError::ParameterExceededSize, if n exceeds
+	/// the buffers length or number of stored items.
 	fn nth(&self, n: usize) -> Result<&T, RingBufferError> {
 		if n >= self.buf.len() {
 			Err(RingBufferError::ParameterExceededSize)
@@ -50,6 +72,23 @@ impl<T> RingBuffer<T> {
 		}
 	}
 
+	// @TODO make this work to use RingBuffer for output_window
+	// fn slice_distance_length(&self, n: usize, len: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
+	// 	let l = self.buf.len();
+
+	// 	if n >= l {
+	// 		Err(RingBufferError::ParameterExceededSize)
+	// 	} else {
+	// 		println!("{:?}", (self.clone(), self.buf.len(), n, len));
+
+	// 		for i in 0..len {
+	// 			buf[i] = self.buf[(self.pos - n + i) % l];
+	// 		}
+	// 		Ok(())
+	// 	}
+	// }
+
+	/// Pushes an item to the end of the ring buffer.
 	fn push(&mut self, item: T) {
 		self.pos = (self.pos + self.buf.len() - 1) % self.buf.len();
 		self.buf[self.pos] = item;
@@ -404,8 +443,8 @@ impl Error for DecompressorError {
 pub struct Decompressor<R: Read> {
 	in_stream: BitReader<R>,
 	header: Header,
-	buf: VecDeque<u8>,
-	output_window: Vec<u8>,
+	buf: VecDeque<Literal>,
+	output_window: Option<Vec<Literal>>,
 	state: State,
 	meta_block: MetaBlock,
 	count_output: usize,
@@ -425,7 +464,7 @@ impl<R: Read> Decompressor<R> {
 			in_stream: in_stream,
 			header: Header::new(),
 			buf: VecDeque::new(),
-			output_window: Vec::new(),
+			output_window: None,
 			state: State::StreamBegin,
 			meta_block: MetaBlock::new(),
 			count_output: 0,
@@ -1669,7 +1708,7 @@ impl<R: Read> Decompressor<R> {
 		let copy_length = self.meta_block.copy_length.unwrap() as usize;
 		let count_output = self.count_output;
 		let distance = self.meta_block.distance.unwrap() as usize;
-		let ref output_window = self.output_window;
+		let ref output_window = self.output_window.as_ref().unwrap();
 		let max_allowed_distance = cmp::min(count_output, window_size);
 
 		if distance <=  max_allowed_distance {
@@ -1721,7 +1760,7 @@ impl<R: Read> Decompressor<R> {
 				83 => [vec![0x20], uppercase_all(base_word), vec![0x20]].concat(),
 				// @TODO implement transformations 1-120 according to Appendix B.
 				_ => {
-					// println!("{}", &format!("output so far =\n{}", String::from_utf8(self.output_window.clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
+					// println!("{}", &format!("output so far =\n{}", String::from_utf8(self.output_window.unwrap().clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
 
 					unimplemented!()
 				},
@@ -1757,7 +1796,7 @@ impl<R: Read> Decompressor<R> {
 				State::WBits(wbits) => {
 					self.header.wbits = Some(wbits);
 					self.header.window_size = Some((1 << wbits) - 16);
-					self.output_window = vec![0; self.header.window_size.unwrap()];
+					self.output_window = Some(vec![0; self.header.window_size.unwrap()]);
 
 					debug(&format!("(WBITS, Window Size) = {:?}", (wbits, self.header.window_size)));
 
@@ -1918,7 +1957,7 @@ impl<R: Read> Decompressor<R> {
 				State::MLenLiterals(m_len_literals) => {
 					for literal in m_len_literals {
 						self.buf.push_front(literal);
-						self.output_window[self.count_output % self.header.window_size.unwrap() as usize] = literal;
+						self.output_window.as_mut().unwrap()[self.count_output % self.header.window_size.unwrap() as usize] = literal;
 						self.count_output += 1;
 					}
 
@@ -2257,7 +2296,7 @@ impl<R: Read> Decompressor<R> {
 				State::InsertLiterals(insert_literals) => {
 					for literal in insert_literals {
 						self.buf.push_front(literal);
-						self.output_window[self.count_output % self.header.window_size.unwrap() as usize] = literal;
+						self.output_window.as_mut().unwrap()[self.count_output % self.header.window_size.unwrap() as usize] = literal;
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
 					}
@@ -2302,7 +2341,7 @@ impl<R: Read> Decompressor<R> {
 
 						debug(&format!("copy literal = {:?}", String::from_utf8(vec![literal])));
 
-						self.output_window[self.count_output % self.header.window_size.unwrap() as usize] = literal;
+						self.output_window.as_mut().unwrap()[self.count_output % self.header.window_size.unwrap() as usize] = literal;
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
 					}
@@ -2323,7 +2362,7 @@ impl<R: Read> Decompressor<R> {
 						State::DataMetaBlockBegin
 					};
 
-					// debug(&format!("output so far = {}", String::from_utf8(self.output_window.clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
+					// debug(&format!("output so far = {}", String::from_utf8(self.output_window.unwrap().clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
 
 					return Ok(self.buf.len());
 				},
