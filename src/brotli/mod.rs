@@ -14,19 +14,19 @@ use std::io;
 use std::io::Read;
 use std::result;
 
-#[derive(Debug, Clone, PartialEq)]
-enum LogLevel {
-	None,
-	Debug,
-}
-const LOG_LEVEL: LogLevel = LogLevel::None;
+// #[derive(Debug, Clone, PartialEq)]
+// enum LogLevel {
+// 	None,
+// 	Debug,
+// }
+// const LOG_LEVEL: LogLevel = LogLevel::None;
 
-fn debug(msg: &str) {
-	if LOG_LEVEL == LogLevel::Debug {
+// fn debug(msg: &str) {
+// 	if LOG_LEVEL == LogLevel::Debug {
 
-		println!("{}", msg);
-	}
-}
+// 		println!("{}", msg);
+// 	}
+// }
 
 #[derive(Debug, Clone, PartialEq)]
 /// RingBuffer to store elements in a fixed size list, overwriting
@@ -454,14 +454,22 @@ impl Error for DecompressorError {
 /// Wraps an input stream and provides methods for decompressing.
 ///
 /// # Examples
-///
-/// extern crate compression;
-///
+/// ```
+/// use std::io::{ Read, stdout, Write };
 /// use compression::brotli::Decompressor;
-/// use std::fs::File;
+/// use compression::bitreader::BitReader;
 ///
-/// let mut f = try!(File::open("compressed.txt.gz"));
-/// let mut brotli = Decompressor::new(f);
+/// let brotli_stream = BitReader::new(std::fs::File::open("data/64x.compressed").unwrap());
+///
+/// let mut decompressed = &mut Vec::new();
+/// let _ = Decompressor::new(brotli_stream).read_to_end(&mut decompressed);
+///
+/// let mut expected = &mut Vec::new();
+/// let _ = std::fs::File::open("data/64x").unwrap().read_to_end(&mut expected);
+///
+/// assert_eq!(expected, decompressed);
+///
+/// stdout().write_all(decompressed).ok();
 pub struct Decompressor<R: Read> {
 	in_stream: BitReader<R>,
 	header: Header,
@@ -1014,13 +1022,14 @@ impl<R: Read> Decompressor<R> {
 
 		// debug(&format!("Actual Code Lengths = {:?}", actual_code_lengths));
 
-		if actual_code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len() == 1 {
-			// @TODO handle case in lookup from complex prefix code when
-			//       there's only one symbol. In that case, no bit should
-			//       be consumed from the stream, and the one symbol should
-			//       be emitted immediately.
-			unimplemented!();
-		}
+		// @NOTE This might not actually be possible
+		// if actual_code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len() == 1 {
+		// 	// @TODO handle case in lookup from complex prefix code when
+		// 	//       there's only one symbol. In that case, no bit should
+		// 	//       be consumed from the stream, and the one symbol should
+		// 	//       be emitted immediately.
+		// 	unimplemented!();
+		// }
 
 		Ok((PrefixCode::Complex,
 			huffman::codes_from_lengths(actual_code_lengths)))
@@ -1979,7 +1988,7 @@ impl<R: Read> Decompressor<R> {
 					self.state = match self.parse_mlen_literals() {
 						Ok(state) => state,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
-					}
+					};
 				},
 				State::MLenLiterals(m_len_literals) => {
 					for literal in m_len_literals {
@@ -1996,7 +2005,16 @@ impl<R: Read> Decompressor<R> {
 
 					// debug(&format!("UNCOMPRESSED = false"));
 
-					unimplemented!();
+					self.state = match self.header.bltype_codes {
+						None => match Self::create_block_type_codes() {
+							Ok(state) => state,
+							Err(e) => return Err(e),
+						},
+						Some(_) => match self.parse_n_bltypes_l() {
+							Ok(state) => state,
+							Err(e) => return Err(e),
+						},
+					};
 				},
 				State::BltypeCodes(bltype_codes) => {
 					self.header.bltype_codes = Some(bltype_codes);
