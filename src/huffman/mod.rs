@@ -17,7 +17,7 @@ fn should_honor_leading_zeroes() {
 }
 
 
-pub fn codes_from_lengths(ref lengths: Vec<usize>) -> tree::Tree {
+pub fn codes_from_lengths(lengths: &[usize]) -> tree::Tree {
 	let max_length = lengths.iter().fold(0, |acc, &len| if len > acc { len } else { acc });
 	let mut bl_count = vec![0; max_length + 1];
 	for &len in lengths {
@@ -32,8 +32,7 @@ pub fn codes_from_lengths(ref lengths: Vec<usize>) -> tree::Tree {
 	}
 
 	let mut codes = tree::Tree::new();
-	for i in 0..lengths.len() {
-		let len = lengths[i];
+	for (i, &len) in lengths.iter().enumerate() {
 		if len > 0 {
 			codes.insert(bit_string_from_code_and_length(next_code[len], len), i as u16);
 			next_code[len] += 1;
@@ -43,7 +42,7 @@ pub fn codes_from_lengths(ref lengths: Vec<usize>) -> tree::Tree {
 	codes
 }
 
-pub fn codes_from_lengths_and_symbols(ref lengths: Vec<usize>, symbols: &Vec<u16>) -> tree::Tree {
+pub fn codes_from_lengths_and_symbols(lengths: &[usize], symbols: &[u16]) -> tree::Tree {
 	let max_length = lengths.iter().fold(0, |acc, &len| if len > acc { len } else { acc });
 	let mut bl_count = vec![0; max_length + 1];
 	for &len in lengths {
