@@ -10,8 +10,4 @@
 pub mod bitreader;
 /// brotli provides a Read implementation to wrap a brotli stream, for convenient decompresssion.
 pub mod brotli;
-/// deflate provides a Read implementation to wrap a deflate stream, for convenient decompresssion.
-pub mod deflate;
-/// gzip provides a Read implementation to wrap a gzip stream, for convenient decompresssion.
-pub mod gzip;
 mod huffman;
