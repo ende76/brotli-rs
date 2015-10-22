@@ -5,6 +5,7 @@ use ::bitreader::{ BitReader, BitReaderError };
 use ::huffman;
 use ::huffman::tree::Tree;
 
+use std::ascii::AsciiExt;
 use std::collections::VecDeque;
 use std::cmp;
 use std::error::Error;
@@ -1116,6 +1117,7 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_block_count(&mut self, prefix_code: &HuffmanCodes) -> Result<BLen, DecompressorError> {
+		// @ NOTE This might never happen.
 		// @TODO consider case NSYM == 1, i.e. symbol should be emitted without consuming from stream
 		let symbol = prefix_code.lookup_symbol(&mut self.in_stream);
 
@@ -1782,14 +1784,47 @@ impl<R: Read> Decompressor<R> {
 			// debug(&format!("base word = {:?}", String::from_utf8(Vec::from(base_word))));
 			// debug(&format!("transform id = {:?}", transform_id));
 
-			fn uppercase_all(base_word: &[u8]) -> Vec<u8> {
-				Vec::from(String::from_utf8(Vec::from(base_word)).unwrap().to_uppercase().as_bytes())
+			fn uppercase_all(base_word: &[u8]) -> Vec<u8>{
+				let l = base_word.len();
+
+				if l == 0 {
+					return Vec::new();
+				} else {
+					return Vec::from(base_word)
+				}
+			}
+
+			fn uppercase_first(base_word: &[u8]) -> Vec<u8> {
+				let l = base_word.len();
+
+				if l == 0 {
+					Vec::from(base_word)
+				} else {
+					Vec::from(base_word)
+				}
+
+				// match base_word[0] {
+				// 	97...122 => base_word[0] = base_word[0] ^ 32,
+				// 	192...223 => if 1 < l {
+				// 		base_word[1] = base_word[1] ^ 32
+				// 	},
+				// 	224...255 => if 2 < l {
+				// 			base_word[2] = base_word[2] ^ 5
+				// 	},
+				// 	_ => {},
+				// }
 			}
 
 			let transformed_word = match transform_id {
 				0 => Vec::from(base_word),
 				1 => [Vec::from(base_word), vec![0x20]].concat(),
-				83 => [vec![0x20], uppercase_all(base_word), vec![0x20]].concat(),
+				2 => [vec![0x20], Vec::from(base_word), vec![0x20]].concat(),
+				3 => Vec::from(&base_word[1..]),
+				4 => {
+					[uppercase_first(base_word), vec![0x20]].concat()
+				},
+				83 => {
+					[vec![0x20], uppercase_all(base_word), vec![0x20]].concat()},
 				// @TODO implement transformations 1-120 according to Appendix B.
 				_ => {
 					// println!("{}", &format!("output so far =\n{}", String::from_utf8(self.output_window.unwrap().clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
