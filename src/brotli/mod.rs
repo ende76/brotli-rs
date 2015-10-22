@@ -5,7 +5,6 @@ use ::bitreader::{ BitReader, BitReaderError };
 use ::huffman;
 use ::huffman::tree::Tree;
 
-use std::ascii::AsciiExt;
 use std::collections::VecDeque;
 use std::cmp;
 use std::error::Error;
@@ -1732,6 +1731,82 @@ impl<R: Read> Decompressor<R> {
 		Ok(State::Distance(distance))
 	}
 
+	fn uppercase_all(base_word: &[u8]) -> Vec<u8> {
+		let l = base_word.len();
+		let mut v = Vec::with_capacity(l);
+		let mut i = 0;
+
+		while i < l {
+			match base_word[i] {
+				1...96|123...191 => {
+					v.push(base_word[i]);
+					i += 1;
+				},
+				97...122 => {
+					v.push(base_word[i] ^ 32);
+					i += 1;
+				},
+				192...223 => {
+					v.push(base_word[i]);
+					if i + 1 < l {
+						v.push(base_word[i + 1] ^ 32);
+					}
+					i += 2;
+				},
+				224...255 => {
+					v.push(base_word[i]);
+					if i + 1 < l {
+						v.push(base_word[i + 1]);
+					}
+					if i + 2 < l {
+						v.push(base_word[i + 2] ^ 5);
+					}
+					i = i + 3;
+				},
+				_ => unreachable!(),
+			}
+		}
+
+		v
+	}
+
+	fn uppercase_first(base_word: &[u8]) -> Vec<u8> {
+		let l = base_word.len();
+		let mut v = Vec::with_capacity(l);
+		let i;
+
+		match base_word[0] {
+			1...96|123...191 => {
+				v.push(base_word[0]);
+				i = 1;
+			},
+			97...122 => {
+				v.push(base_word[0] ^ 32);
+				i = 1;
+			},
+			192...223 => {
+				v.push(base_word[0]);
+				if 1 < l {
+					v.push(base_word[1] ^ 32);
+				}
+				i = 2;
+			},
+			224...255 => {
+				v.push(base_word[0]);
+				if 1 < l {
+					v.push(base_word[1]);
+				}
+				if 2 < l {
+					v.push(base_word[2] ^ 5);
+				}
+				i = 3;
+			},
+			_ => unreachable!(),
+		}
+
+		[v, Vec::from(&base_word[i..])].concat()
+	}
+
 	fn copy_literals(&mut self) -> Result<State, DecompressorError> {
 		let window_size = self.header.window_size.unwrap();
 		let copy_length = self.meta_block.copy_length.unwrap() as usize;
@@ -1784,36 +1859,6 @@ impl<R: Read> Decompressor<R> {
 			// debug(&format!("base word = {:?}", String::from_utf8(Vec::from(base_word))));
 			// debug(&format!("transform id = {:?}", transform_id));
 
-			fn uppercase_all(base_word: &[u8]) -> Vec<u8>{
-				let l = base_word.len();
-
-				if l == 0 {
-					return Vec::new();
-				} else {
-					return Vec::from(base_word)
-				}
-			}
-
-			fn uppercase_first(base_word: &[u8]) -> Vec<u8> {
-				let l = base_word.len();
-
-				if l == 0 {
-					Vec::from(base_word)
-				} else {
-					Vec::from(base_word)
-				}
-
-				// match base_word[0] {
-				// 	97...122 => base_word[0] = base_word[0] ^ 32,
-				// 	192...223 => if 1 < l {
-				// 		base_word[1] = base_word[1] ^ 32
-				// 	},
-				// 	224...255 => if 2 < l {
-				// 			base_word[2] = base_word[2] ^ 5
-				// 	},
-				// 	_ => {},
-				// }
-			}
 
 			let transformed_word = match transform_id {
 				0 => Vec::from(base_word),
@@ -1821,10 +1866,10 @@ impl<R: Read> Decompressor<R> {
 				2 => [vec![0x20], Vec::from(base_word), vec![0x20]].concat(),
 				3 => Vec::from(&base_word[1..]),
 				4 => {
-					[uppercase_first(base_word), vec![0x20]].concat()
+					[Self::uppercase_first(base_word), vec![0x20]].concat()
 				},
 				83 => {
-					[vec![0x20], uppercase_all(base_word), vec![0x20]].concat()},
+					[vec![0x20], Self::uppercase_all(base_word), vec![0x20]].concat()},
 				// @TODO implement transformations 1-120 according to Appendix B.
 				_ => {
 					// println!("{}", &format!("output so far =\n{}", String::from_utf8(self.output_window.unwrap().clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
@@ -2551,5 +2596,6 @@ const LUT_2: [usize; 256] = [
 	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
 	6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7
 ];
+
 
 
