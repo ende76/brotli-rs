@@ -78,7 +78,7 @@ impl<T: Copy + Debug> RingBuffer<T> {
 		}
 	}
 
-	fn slice_distance_length(&self, n: usize, l: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
+	fn slice_distance_length(&self, n: usize, _l: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
 		let len = self.buf.len();
 
 		if n >= len {
@@ -89,8 +89,8 @@ impl<T: Copy + Debug> RingBuffer<T> {
 			//        iterating over a huge buffer.
 			// debug(&format!("RingBuffer::slice_distance_length(): {:?}", (self.clone(), self.buf.len(), n, len)));
 
-			for i in 0..l {
-				buf[i] = self.buf[(self.pos + len - n + i) % len];
+			for (i, mut item) in buf.iter_mut().enumerate() {
+				*item = self.buf[(self.pos + len - n + i) % len];
 			}
 			Ok(())
 		}
@@ -132,8 +132,8 @@ impl Display for RingBufferError {
 
 impl Error for RingBufferError {
 	fn description(&self) -> &str {
-		match self {
-			&RingBufferError::ParameterExceededSize => "Index parameter exceeded ring buffer size",
+		match *self {
+			RingBufferError::ParameterExceededSize => "Index parameter exceeded ring buffer size",
 		}
 	}
 }
@@ -428,25 +428,25 @@ impl Display for DecompressorError {
 
 impl Error for DecompressorError {
 	fn description(&self) -> &str {
-		match self {
-			&DecompressorError::UnexpectedEOF => "Encountered unexpected EOF",
-			&DecompressorError::NonZeroFillBit => "Enocuntered non-zero fill bit",
-			&DecompressorError::NonZeroReservedBit => "Enocuntered non-zero reserved bit",
-			&DecompressorError::NonZeroTrailerBit => "Enocuntered non-zero bit trailing the stream",
-			&DecompressorError::NonZeroTrailerNibble => "Enocuntered non-zero nibble trailing",
-			&DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
-			&DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
-			&DecompressorError::ParseErrorInsertAndCopyLength => "Error parsing Insert And Copy Length",
-			&DecompressorError::ParseErrorInsertLiterals => "Error parsing Insert Literals",
-			&DecompressorError::ParseErrorDistanceCode => "Error parsing DistanceCode",
-			&DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
-			&DecompressorError::ParseErrorContextMap => "Error parsing context map",
-			&DecompressorError::ParseErrorComplexPrefixCodeLengths => "Error parsing code lengths for complex prefix code",
-			&DecompressorError::RingBufferError => "Error accessing distance ring buffer",
-			&DecompressorError::RunLengthExceededSizeOfContextMap => "Run length excceeded declared length of context map",
-			&DecompressorError::InvalidTransformId => "Encountered invalid transform id in reference to static dictionary",
-			&DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
-			&DecompressorError::CodeLengthsChecksum => "Code length check sum did not add up to 32 in complex prefix code",
+		match *self {
+			DecompressorError::UnexpectedEOF => "Encountered unexpected EOF",
+			DecompressorError::NonZeroFillBit => "Enocuntered non-zero fill bit",
+			DecompressorError::NonZeroReservedBit => "Enocuntered non-zero reserved bit",
+			DecompressorError::NonZeroTrailerBit => "Enocuntered non-zero bit trailing the stream",
+			DecompressorError::NonZeroTrailerNibble => "Enocuntered non-zero nibble trailing",
+			DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
+			DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
+			DecompressorError::ParseErrorInsertAndCopyLength => "Error parsing Insert And Copy Length",
+			DecompressorError::ParseErrorInsertLiterals => "Error parsing Insert Literals",
+			DecompressorError::ParseErrorDistanceCode => "Error parsing DistanceCode",
+			DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
+			DecompressorError::ParseErrorContextMap => "Error parsing context map",
+			DecompressorError::ParseErrorComplexPrefixCodeLengths => "Error parsing code lengths for complex prefix code",
+			DecompressorError::RingBufferError => "Error accessing distance ring buffer",
+			DecompressorError::RunLengthExceededSizeOfContextMap => "Run length excceeded declared length of context map",
+			DecompressorError::InvalidTransformId => "Encountered invalid transform id in reference to static dictionary",
+			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
+			DecompressorError::CodeLengthsChecksum => "Code length check sum did not add up to 32 in complex prefix code",
 		}
 	}
 }
@@ -589,10 +589,8 @@ impl<R: Read> Decompressor<R> {
 
 		Ok(State::MSkipLen({
 			let mut m_skip_len: MSkipLen = 0;
-			let mut i = 0;
-			for byte in bytes {
-				m_skip_len = m_skip_len | ((byte as MSkipLen) << i);
-				i += 1;
+			for (i, byte) in bytes.iter().enumerate() {
+				m_skip_len = m_skip_len | ((*byte as MSkipLen) << i);
 			}
 			m_skip_len + 1
 		}))
@@ -730,9 +728,9 @@ impl<R: Read> Decompressor<R> {
 	fn parse_context_modes_literals(&mut self) -> result::Result<State, DecompressorError> {
 		let mut context_modes = vec![0; self.meta_block.header.n_bltypes_l.unwrap() as usize];
 
-		for i in 0..context_modes.len() {
+		for mut mode in &mut context_modes {
 			match self.in_stream.read_u8_from_n_bits(2) {
-				Ok(my_u8) => context_modes[i] = my_u8 as ContextMode,
+				Ok(my_u8) => *mode = my_u8 as ContextMode,
 				Err(_) => return Err(DecompressorError::UnexpectedEOF),
 			}
 		}
@@ -775,8 +773,8 @@ impl<R: Read> Decompressor<R> {
 		// debug(&format!("NSYM = {:?}", n_sym));
 
 		let mut symbols = vec![0; n_sym];
-		for i in 0..n_sym {
-			symbols[i] = match self.in_stream.read_u16_from_n_bits(bit_width) {
+		for symbol in &mut symbols {
+			*symbol = match self.in_stream.read_u16_from_n_bits(bit_width) {
 				Ok(my_u8) => my_u8 as Symbol,
 				Err(_) => return Err(DecompressorError::UnexpectedEOF),
 			}
@@ -817,10 +815,11 @@ impl<R: Read> Decompressor<R> {
 		// debug(&format!("Code Lengths = {:?}", code_lengths));
 
 		Ok((PrefixCode::new_simple(Some(n_sym as u8), Some(symbols.clone()), tree_select),
-            huffman::codes_from_lengths_and_symbols(code_lengths, &symbols)))
+            huffman::codes_from_lengths_and_symbols(&code_lengths, &symbols)))
 	}
 
-	fn parse_complex_prefix_code(&mut self, h_skip: u8, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
+	fn parse_complex_prefix_code(&mut self, h_skip: u8, _alphabet_size: usize) 
+			-> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
 		// @TODO: probably need to use parameter alphabet_size here to be able to
 		//        reject streams with excessive repeated trailing zeros, as per section
 		//        3.5. of the RFC:
@@ -899,7 +898,7 @@ impl<R: Read> Decompressor<R> {
 		// debug(&format!("Code Lengths = {:?}", code_lengths));
 		// debug(&format!("Symbols = {:?}", symbols));
 
-		let prefix_code_code_lengths = huffman::codes_from_lengths_and_symbols(code_lengths, &symbols);
+		let prefix_code_code_lengths = huffman::codes_from_lengths_and_symbols(&code_lengths, &symbols);
 
 		// debug(&format!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths));
 
@@ -1032,7 +1031,7 @@ impl<R: Read> Decompressor<R> {
 		// }
 
 		Ok((PrefixCode::Complex,
-			huffman::codes_from_lengths(actual_code_lengths)))
+			huffman::codes_from_lengths(&actual_code_lengths)))
 	}
 
 	fn parse_prefix_code(&mut self, alphabet_size: usize) -> result::Result<(PrefixCode, HuffmanCodes), DecompressorError> {
@@ -1207,7 +1206,7 @@ impl<R: Read> Decompressor<R> {
 	fn parse_prefix_codes_distances(&mut self) -> result::Result<State, DecompressorError> {
 		let n_trees_d = self.meta_block.header.n_trees_d.unwrap() as usize;
 		let mut prefix_codes = Vec::with_capacity(n_trees_d);
-		let alphabet_size = 16 + self.meta_block.header.n_direct.unwrap() as usize + 48 << self.meta_block.header.n_postfix.unwrap() as usize;
+		let alphabet_size = (16 + self.meta_block.header.n_direct.unwrap() as usize + 48) << self.meta_block.header.n_postfix.unwrap() as usize;
 
 		for _ in 0..n_trees_d {
 			prefix_codes.push(match self.parse_prefix_code(alphabet_size) {
@@ -1313,17 +1312,12 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn inverse_move_to_front_transform(v: &mut[u8]) {
-		let mut mtf: Vec<u8> = vec![0; 256];
-		let v_len = v.len();
+		let mut mtf: Vec<u8> = (0usize..256).map(|x| x as u8).collect();
 
-		for i in 0..256 {
-			mtf[i] = i as u8;
-		}
-
-		for i in 0..v_len {
-			let index = v[i] as usize;
+		for mut item in v.iter_mut() {
+			let index = *item as usize;
 			let value = mtf[index];
-			v[i] = value;
+			*item = value;
 
 			for j in (1..index+1).rev() {
 				mtf[j] = mtf[j - 1];
@@ -1522,7 +1516,7 @@ impl<R: Read> Decompressor<R> {
 		let insert_length = self.meta_block.insert_length.unwrap() as usize;
 		let mut literals = vec![0; insert_length];
 
-		for i in 0..insert_length {
+		for mut lit in &mut literals {
 			// debug(&format!("parse_insert_literals(): blen_l = {:?}", self.meta_block.blen_l));
 
 			match self.meta_block.blen_l {
@@ -1579,7 +1573,7 @@ impl<R: Read> Decompressor<R> {
 
 			// debug(&format!("literal prefix code index = {:?}", index));
 
-			literals[i] = match self.meta_block.header.prefix_codes_literals.as_ref().unwrap()[index] {
+			*lit = match self.meta_block.header.prefix_codes_literals.as_ref().unwrap()[index] {
 				PrefixCode::Simple(PrefixCodeSimple {
 					n_sym: Some(1),
 					symbols: Some(ref symbols),
@@ -1600,9 +1594,9 @@ impl<R: Read> Decompressor<R> {
 				_ => unreachable!(),
 			};
 
-			// debug(&format!("Literal = {:?}", String::from_utf8(vec![literals[i]])));
+			// debug(&format!("Literal = {:?}", String::from_utf8(vec![lit])));
 
-			self.literal_buf.push(literals[i]);
+			self.literal_buf.push(*lit);
 		}
 
 		Ok(State::InsertLiterals(literals))
@@ -1716,11 +1710,12 @@ impl<R: Read> Decompressor<R> {
 
 				// debug(&format!("Offset = {:?}", offset));
 
-				let distance = ((offset + dextra) << n_postfix) + lcode + n_direct + 1;
+				//let distance = 
+				((offset + dextra) << n_postfix) + lcode + n_direct + 1
 
 				// debug(&format!("Distance = {:?}", distance));
 
-				distance
+				//distance
 			},
 			None => unreachable!()
 		};
@@ -1739,7 +1734,7 @@ impl<R: Read> Decompressor<R> {
 		let copy_length = self.meta_block.copy_length.unwrap() as usize;
 		let count_output = self.count_output;
 		let distance = self.meta_block.distance.unwrap() as usize;
-		let ref output_window = self.output_window.as_ref().unwrap();
+		let output_window = self.output_window.as_ref().unwrap();
 		let max_allowed_distance = cmp::min(count_output, window_size);
 
 		if distance <=  max_allowed_distance {
@@ -2355,7 +2350,7 @@ impl<R: Read> Decompressor<R> {
 						}
 					};
 
-					if self.buf.len() > 0 {
+					if !self.buf.is_empty() {
 						return Ok(self.buf.len());
 					}
 				},
@@ -2444,7 +2439,7 @@ impl<R: Read> Decompressor<R> {
 
 impl<R: Read> Read for Decompressor<R> {
 	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-		if self.buf.len() == 0 {
+		if self.buf.is_empty() {
 			match self.decompress() {
 				Err(e) => {
 
@@ -2457,7 +2452,6 @@ impl<R: Read> Read for Decompressor<R> {
 		let l = cmp::min(self.buf.len(), buf.len());
 
 		for i in 0..l {
-
 			buf[i] = self.buf.pop_back().unwrap();
 		}
 
