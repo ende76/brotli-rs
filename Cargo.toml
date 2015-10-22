@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Thomas Pickert <ende.mail@web.de>"]
 license = "Apache-2.0"
 repository = "https://github.com/ende76/compression"
+documentation = "http://ende76.github.io/compression/compression/"
 
 [[bin]]
 doc = false
