@@ -22,10 +22,11 @@ pub struct BitReader<R: Read> {
 	inner: BufReader<R>,
 	bit_pos: u8,
 	current_byte: Option<u8>,
-	pub global_bit_pos: usize,
+	global_bit_pos: usize,
 }
 
 impl<R: Read> BitReader<R> {
+	/// Creates a BitReader from a Read.
 	pub fn new(inner: R) -> BitReader<R> {
 		BitReader{
 			inner: BufReader::new(inner),
@@ -51,6 +52,8 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	/// Reads a u8 from the stream, reading exactly one byte.
+	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_u8(&mut self) -> Result<u8, BitReaderError> {
 		let mut buf = &mut [0u8];
 
@@ -79,6 +82,8 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	/// Reads a u8 from 4 bits.
+	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_u8_from_nibble(&mut self) -> Result<u8, BitReaderError> {
 		let mut buf = &mut [0u8];
 
@@ -128,6 +133,9 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	/// Reads a u16 from two bytes.
+	/// Only supports little endian, i.e. the least significant byte comes first in the stream.
+	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_u16(&mut self) -> Result<u16, BitReaderError> {
 		let mut buf = &mut [0u8; 2];
 
@@ -147,6 +155,9 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	/// Reads a u32 from four bytes.
+	/// Only supports little endian, i.e. the least significant byte comes first in the stream.
+	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_u32(&mut self) -> Result<u32, BitReaderError> {
 		match (self.read_u16(), self.read_u16()) {
 			(Ok(my_u16_0), Ok(my_u16_1)) => Ok((my_u16_1 as u32) << 16 | (my_u16_0 as u32)),
@@ -154,6 +165,9 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	/// Reads a u32 from n bits.
+	/// Only supports little endian, i.e. the least significant bit comes first in the stream.
+	/// Returns a BitReaderError if the stream ends prematurely, or if n exceeds the number of possible bits.
 	pub fn read_u32_from_n_bits(&mut self, n: usize) -> Result<u32, BitReaderError> {
 		if n > 32 {
 			return Err(BitReaderError::TooManyBitsForU32);
@@ -174,6 +188,9 @@ impl<R: Read> BitReader<R> {
 		Ok(my_u32)
 	}
 
+	/// Reads a u32 from n nibbles (4 bits).
+	/// Only supports little endian, i.e. the least significant nibble comes first in the stream.
+	/// Returns a BitReaderError if the stream ends prematurely, or if n exceeds the number of possible nibbles.
 	pub fn read_u32_from_n_nibbles(&mut self, n: usize) -> Result<u32, BitReaderError> {
 		let mut my_u32 = 0;
 
@@ -187,6 +204,8 @@ impl<R: Read> BitReader<R> {
 		Ok(my_u32)
 	}
 
+	/// Reads one bit from the stream, returns a bool result.
+	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_bit(&mut self) -> Result<bool, BitReaderError> {
 		// println!("bit pos = {:?}", self.global_bit_pos);
 
@@ -214,6 +233,8 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	/// Reads n bits from the stream, returns a Vec<bool> result.
+	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_n_bits(&mut self, n: usize) -> Result<Vec<bool>, BitReaderError> {
 		let mut v = Vec::with_capacity(n);
 
@@ -227,6 +248,9 @@ impl<R: Read> BitReader<R> {
 		Ok(v)
 	}
 
+	/// Reads a u8 from n bits from the stream.
+	/// Returns a BitReaderError if the stream ends prematurely, or if n exceeds the
+	/// possible number of bits.
 	pub fn read_u8_from_n_bits(&mut self, n: usize) -> Result<u8, BitReaderError> {
 		if n > 8 {
 			return Err(BitReaderError::TooManyBitsForU8);
@@ -245,6 +269,11 @@ impl<R: Read> BitReader<R> {
 		Ok(my_u8)
 	}
 
+	/// Reads a u8 from n bits from the stream.
+	/// As opposed to read_u8_from_n_bits(), this method interprets the bits in reverse order,
+	/// i.e. the most significant bit comes first in the stream.
+	/// Returns a BitReaderError if the stream ends prematurely, or if n exceeds the possible
+	/// number of bits.
 	pub fn read_u8_from_n_bits_reverse(&mut self, n: usize) -> Result<u8, BitReaderError> {
 		if n > 8 {
 			return Err(BitReaderError::TooManyBitsForU8);
@@ -263,6 +292,8 @@ impl<R: Read> BitReader<R> {
 		Ok(my_u8)
 	}
 
+	/// Reads u8 from bits up to the next byte boundary.
+	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_u8_from_byte_tail(&mut self) -> Result<u8, BitReaderError> {
 		let bit_pos = self.bit_pos.clone();
 
@@ -275,6 +306,9 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	/// Reads a u16 from n bits from the stream.
+	/// Returns a BitReaderError if the stream ends prematurely, or if n exceeds the
+	/// possible number of bits.
 	pub fn read_u16_from_n_bits(&mut self, n: usize) -> Result<u16, BitReaderError> {
 		if n > 16 {
 			return Err(BitReaderError::TooManyBitsForU16);
@@ -293,6 +327,9 @@ impl<R: Read> BitReader<R> {
 		Ok(my_u16)
 	}
 
+	/// Reads a vector of u8 until a value of 0 is encountered.
+	/// Returns a Vec<u8> result, where the terminating 0 value is not included.
+	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_zero_terminated_string(&mut self) -> Result<Vec<u8>, BitReaderError> {
 		let mut my_string = Vec::with_capacity(16);
 
@@ -307,6 +344,8 @@ impl<R: Read> BitReader<R> {
 		Ok(my_string)
 	}
 
+	/// Reads a vector of u8 of a given length.
+	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_fixed_length_string(&mut self, len: usize) -> Result<Vec<u8>, BitReaderError> {
 		let mut my_string = Vec::with_capacity(len);
 
@@ -321,12 +360,18 @@ impl<R: Read> BitReader<R> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Error types that can be returned by the decompressor
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum BitReaderError {
+	/// Unspecified error
 	Unspecified,
+	/// Tried to read u8 from more than 8 bits.
 	TooManyBitsForU8,
+	/// Tried to read u16 from more than 16 bits.
 	TooManyBitsForU16,
+	/// Tried to read u32 from more than 32 bits.
 	TooManyBitsForU32,
+	/// Unexpected end of file
 	EOF,
 }
 
@@ -352,7 +397,7 @@ mod tests {
 	#[test]
 	fn should_read_one_u8() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let expected = 0x1f;
 		let mut br = BitReader::new(Cursor::new(vec![expected, 0x8b]));
@@ -366,7 +411,7 @@ mod tests {
 	#[test]
 	fn should_read_two_u8() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let (expected0, expected1) = (0x1f, 0x8b);
 		let mut br = BitReader::new(Cursor::new(vec![expected0, expected1]));
@@ -380,7 +425,7 @@ mod tests {
 	#[test]
 	fn should_read_one_u16() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let expected = 0x8b1f;
 		let mut br = BitReader::new(Cursor::new(vec![(expected & 0x00ff) as u8, (expected >> 8) as u8]));
@@ -394,7 +439,7 @@ mod tests {
 	#[test]
 	fn should_read_one_set_bit() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![3]));
 
@@ -407,7 +452,7 @@ mod tests {
 	#[test]
 	fn should_read_some_bits() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![134, 1]));
 
@@ -433,7 +478,7 @@ mod tests {
 	#[test]
 	fn should_read_u8_after_bit() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b10001101, 0b00010101]));
 
@@ -449,7 +494,7 @@ mod tests {
 	#[test]
 	fn should_read_u16_after_bit() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b10001101, 0b00010101, 0b00010101]));
 
@@ -465,7 +510,7 @@ mod tests {
 	#[test]
 	fn should_read_u32() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0x8e, 0x30, 0x04, 0x56]));
 
@@ -480,7 +525,7 @@ mod tests {
 	#[test]
 	fn should_read_zero_terminated_string() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![
 			0x78, 0x78, 0x78, 0x78, 0x78,
@@ -500,7 +545,7 @@ mod tests {
 	#[test]
 	fn should_read_fixed_length_string() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![
 			0x78, 0x78, 0x78, 0x78, 0x78,
@@ -520,7 +565,7 @@ mod tests {
 	#[test]
 	fn should_read_eight_bits() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0x08]));
 
@@ -533,7 +578,7 @@ mod tests {
 	#[test]
 	fn should_read_11_bits() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b11001000, 0b11111110]));
 
@@ -546,7 +591,7 @@ mod tests {
 	#[test]
 	fn should_read_29u8_from_5_bits() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![157]));
 
@@ -559,7 +604,7 @@ mod tests {
 	#[test]
 	fn should_read_9u8_from_5_bits_reverse() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b00110010]));
 
@@ -573,7 +618,7 @@ mod tests {
 	#[test]
 	fn should_read_3784u16_from_11_bits() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b11001000, 0b11111110]));
 
@@ -586,7 +631,7 @@ mod tests {
 	#[test]
 	fn should_read_19u8_from_byte_tail() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b10011101]));
 		let _ = br.read_bit();
@@ -602,7 +647,7 @@ mod tests {
 	#[test]
 	fn should_read_10u8_from_nibble() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b11010101]));
 		let _ = br.read_bit();
@@ -618,7 +663,7 @@ mod tests {
 	#[test]
 	fn should_read_10u8_nibble_twice() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b10101010]));
 
@@ -636,7 +681,7 @@ mod tests {
 	#[test]
 	fn should_read_7u8_nibble_four_times() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b11101111, 0b11101110, 0b11101110]));
 		let _ = br.read_bit();
@@ -665,7 +710,7 @@ mod tests {
 	#[test]
 	fn should_read_524527u32_from_5_nibbles() {
 		use super::*;
-		use std::io::{ Cursor };
+		use std::io::Cursor;
 
 		let mut br = BitReader::new(Cursor::new(vec![0b1110_1111, 0, 0b1110_1000]));
 

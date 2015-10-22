@@ -7,7 +7,6 @@ use std::fmt;
 use std::fmt::{ Display, Formatter };
 use std::io;
 use std::io::Read;
-use std::result;
 use std::string::String;
 
 
@@ -26,6 +25,7 @@ const U8_COMPRESSION_METHOD_DEFLATE: u8 = 0x08;
 ///
 /// let mut f = try!(File::open("compressed.txt.gz"));
 /// let mut gzip = Decompressor::new(f);
+#[derive(Debug)]
 pub struct Decompressor<R: Read> {
 	in_stream: BitReader<R>,
 
@@ -184,6 +184,7 @@ impl Error for DecompressorError {
 }
 
 impl<R: Read> Decompressor<R> {
+	/// Creates Decompressor struct from BitReader
 	pub fn new(in_stream: BitReader<R>) -> Decompressor<R> {
 		Decompressor{
 			in_stream: in_stream,
@@ -198,7 +199,7 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn parse_identification1(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_identification1(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_u8() {
 			Ok(U8_IDENTIFICATION1_GZIP) => Ok(State::Identification1(Identification::Gzip)),
 			Ok(_) => Err(DecompressorError::InvalidIdentification),
@@ -206,7 +207,7 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn parse_identification2(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_identification2(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_u8() {
 			Ok(U8_IDENTIFICATION2_GZIP) => Ok(State::Identification2(Identification::Gzip)),
 			Ok(_) => Err(DecompressorError::InvalidIdentification),
@@ -214,7 +215,7 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn parse_compression_method(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_compression_method(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_u8() {
 			Ok(U8_COMPRESSION_METHOD_DEFLATE) => Ok(State::CompressionMethod(CompressionMethod::Deflate)),
 			Ok(_) => Err(DecompressorError::InvalidCompressionMethod),
@@ -222,7 +223,7 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn parse_flags(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_flags(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_n_bits(8) {
 			Ok(flags) => {
 				if flags[5] || flags[6] || flags[7] {
@@ -242,14 +243,14 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn parse_mtime(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_mtime(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_u32() {
 			Ok(mtime) => Ok(State::MTime(mtime)),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_xfl(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_xfl(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_n_bits(8) {
 			Ok(flags) => {
 				if flags[0] || flags[3] || flags[4] || flags[5] || flags[6] || flags[7] {
@@ -266,7 +267,7 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn parse_os(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_os(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_u8() {
 			Ok(0) => Ok(State::OS(OS::FATFilesystem)),
 			Ok(1) => Ok(State::OS(OS::Amiga)),
@@ -288,42 +289,42 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn parse_xlen(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_xlen(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_u16() {
 			Ok(xlen) => Ok(State::XLen(xlen)),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_extra_field(&mut self, xlen: XLen) -> result::Result<State, DecompressorError> {
+	fn parse_extra_field(&mut self, xlen: XLen) -> Result<State, DecompressorError> {
 		match self.in_stream.read_fixed_length_string(xlen as usize) {
 			Ok(extra_field) => Ok(State::ExtraField(extra_field)),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_file_name(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_file_name(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_zero_terminated_string() {
 			Ok(file_name) => Ok(State::FileName(String::from_utf8(file_name).unwrap())),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_file_comment(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_file_comment(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_zero_terminated_string() {
 			Ok(file_comment) => Ok(State::FileComment(String::from_utf8(file_comment).unwrap())),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_crc16(&mut self) -> result::Result<State, DecompressorError> {
+	fn parse_crc16(&mut self) -> Result<State, DecompressorError> {
 		match self.in_stream.read_u16() {
 			Ok(crc16) => Ok(State::CRC16(crc16)),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn decompress(&mut self) -> result::Result<usize, DecompressorError> {
+	fn decompress(&mut self) -> Result<usize, DecompressorError> {
 		loop {
 			match self.state.clone() {
 				State::HeaderBegin => {
@@ -334,8 +335,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::Identification1(id) => {
 					assert_eq!(Identification::Gzip, id);
-					println!("ID1 {:?}", id);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("ID1 {:?}", id);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.header.id1 = Some(id);
 					self.state = match self.parse_identification2() {
 						Ok(state) => state,
@@ -344,8 +345,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::Identification2(id) => {
 					assert_eq!(Identification::Gzip, id);
-					println!("ID2 {:?}", id);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("ID2 {:?}", id);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.header.id2 = Some(id);
 					self.state = match self.parse_compression_method() {
 						Ok(state) => state,
@@ -354,8 +355,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::CompressionMethod(cm) => {
 					assert_eq!(CompressionMethod::Deflate, cm);
-					println!("CM {:?}", cm);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("CM {:?}", cm);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.header.cm = Some(cm);
 					self.state = match self.parse_flags() {
 						Ok(state) => state,
@@ -364,8 +365,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::Flags(flags) => {
 					self.header.flags = Some(flags);
-					println!("Flags {:?}", self.header.flags);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("Flags {:?}", self.header.flags);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = match self.parse_mtime() {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -373,8 +374,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::MTime(mtime) => {
 					self.header.mtime = Some(mtime);
-					println!("MTime {:?}", mtime);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("MTime {:?}", mtime);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = match self.parse_xfl() {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -382,8 +383,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::ExtraFlags(xfl) => {
 					self.header.xfl = Some(xfl);
-					println!("XFL {:?}", self.header.xfl);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("XFL {:?}", self.header.xfl);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = match self.parse_os() {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -391,8 +392,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::OS(os) => {
 					self.header.os = Some(os);
-					println!("OS {:?}", self.header.os);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("OS {:?}", self.header.os);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = State::ParsingXLen(self.header.flags.as_ref().unwrap().fextra);
 				},
 				State::ParsingXLen(true) => {
@@ -407,8 +408,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::XLen(xlen) => {
 					self.header.xlen = Some(xlen);
-					println!("XLEN {:?}", xlen);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("XLEN {:?}", xlen);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = match self.parse_extra_field(xlen) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -416,8 +417,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::ExtraField(extra_field) => {
 					self.header.extra_field = Some(extra_field);
-					println!("Extra Field {:?}", self.header.extra_field);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("Extra Field {:?}", self.header.extra_field);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = State::ParsingFileName(self.header.flags.as_ref().unwrap().fname);
 				},
 				State::ParsingFileName(true) => {
@@ -432,8 +433,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::FileName(file_name) => {
 					self.header.file_name = Some(file_name);
-					println!("File Name {:?}", self.header.file_name);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("File Name {:?}", self.header.file_name);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = State::ParsingFileComment(self.header.flags.as_ref().unwrap().fcomment);
 				},
 				State::ParsingFileComment(true) => {
@@ -448,8 +449,8 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::FileComment(file_comment) => {
 					self.header.file_comment = Some(file_comment);
-					println!("File Comment {:?}", self.header.file_comment);
-					println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
+					// println!("File Comment {:?}", self.header.file_comment);
+					// println!("@ bytes: {} and bits: {}", self.in_stream.global_bit_pos / 8, self.in_stream.global_bit_pos % 8);
 					self.state = State::ParsingCRC16(self.header.flags.as_ref().unwrap().fhcrc);
 				},
 				State::ParsingCRC16(false) => {

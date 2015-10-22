@@ -1,5 +1,5 @@
-use ::bitreader::{ BitReader };
-use std::io::{ Read };
+use ::bitreader::BitReader;
+use std::io::Read;
 
 /// For Huffman codes used in the Deflate spec, is seems that the length of a code is at most 9 bits.
 /// For this simple use case, we don't need/want to deal with type parameters.
@@ -255,8 +255,8 @@ mod tests {
 
 	#[test]
 	fn should_lookup_first_level_leaf_left() {
-		use super::{ Tree };
-		use super::Tree::{ Leaf };
+		use super::Tree;
+		use super::Tree::Leaf;
 
 		let mut tree = Tree::new();
 		tree.insert(vec![true, false], 6666);
@@ -268,8 +268,8 @@ mod tests {
 
 	#[test]
 	fn should_lookup_first_level_leaf_right() {
-		use super::{ Tree };
-		use super::Tree::{ Leaf };
+		use super::Tree;
+		use super::Tree::Leaf;
 
 		let mut tree = Tree::new();
 		tree.insert(vec![false, false], 6666);
@@ -290,14 +290,14 @@ mod tests {
 		tree.insert(vec![false, true], 6667);
 
 		assert_eq!(Some(Inner(Node{
-			left: Some(Box::new(Tree::Leaf(6666))),
-			right: Some(Box::new(Tree::Leaf(6667))),
+			left: Some(Box::new(Leaf(6666))),
+			right: Some(Box::new(Leaf(6667))),
 		})), tree.lookup(false));
 	}
 
 	#[test]
 	fn should_result_in_none() {
-		use super::{ Tree };
+		use super::Tree;
 
 		let mut tree = Tree::new();
 		tree.insert(vec![true], 666);

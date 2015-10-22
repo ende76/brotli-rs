@@ -7,7 +7,6 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::{ Display, Formatter };
 use std::io::Read;
-use std::result;
 
 /// Wraps an input stream and provides methods for decompressing.
 ///
@@ -20,6 +19,7 @@ use std::result;
 ///
 /// let mut f = try!(File::open("compressed.txt.gz"));
 /// let mut deflate = Decompressor::new(f);
+#[derive(Debug)]
 pub struct Decompressor {
 	header: Header,
 	state: State,
@@ -41,7 +41,7 @@ type HLit = u16;
 type HDist = u8;
 type HCLen = u8;
 type CodeLengths = Vec<usize>;
-type HuffmanCodes = huffman::tree::Tree;
+type HuffmanCodes = Tree;
 type Symbol = u16;
 type Length = u16;
 type DistanceCode = u8;
@@ -95,9 +95,12 @@ enum State {
 	Finished,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Error types that can be returned by the decompressor
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum DecompressorError {
+	/// The decompressor encountered an unexpcted EOF
 	UnexpectedEOF,
+	/// The deflate header contained a reserved Block Type
 	BlockTypeReserved
 }
 
@@ -117,6 +120,7 @@ impl Error for DecompressorError {
 }
 
 impl Decompressor {
+	/// Creates Decompressor struct
 	pub fn new() -> Decompressor {
 		Decompressor{
 			header: Header::new(),
@@ -127,14 +131,14 @@ impl Decompressor {
 		}
 	}
 
-	fn parse_bfinal<R: Read>(in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+	fn parse_bfinal<R: Read>(in_stream: &mut BitReader<R>) -> Result<State, DecompressorError> {
 		match in_stream.read_bit() {
 			Ok(bfinal) => Ok(State::BFinal(bfinal)),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_btype<R: Read>(in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+	fn parse_btype<R: Read>(in_stream: &mut BitReader<R>) -> Result<State, DecompressorError> {
 		match in_stream.read_n_bits(2) {
 			Ok(btype) => match (btype[1], btype[0]) {
 				(false, false) => Ok(State::BType(BType::NoCompression)),
@@ -146,45 +150,45 @@ impl Decompressor {
 		}
 	}
 
-	fn create_fixed_huffman_codelengths() -> result::Result<State, DecompressorError> {
+	fn create_fixed_huffman_codelengths() -> Result<State, DecompressorError> {
 		let lengths_literal_length = [vec!(8; 144), vec!(9; 112), vec!(7; 24), vec!(8; 8)].concat();
 		let lengths_distance = [vec!(5; 32)].concat();
 
 		Ok(State::CodeLengths((lengths_literal_length, lengths_distance)))
 	}
 
-	fn create_huffman_codes(lengths_literal_length: CodeLengths, lengths_distance: CodeLengths) -> result::Result<State, DecompressorError> {
+	fn create_huffman_codes(lengths_literal_length: CodeLengths, lengths_distance: CodeLengths) -> Result<State, DecompressorError> {
 
 		Ok(State::HuffmanCodes((huffman::codes_from_lengths(&lengths_literal_length), huffman::codes_from_lengths(&lengths_distance))))
 	}
 
-	fn create_huffman_codes_for_code_lengths(lengths_code_lengths: CodeLengths) ->  result::Result<State, DecompressorError> {
+	fn create_huffman_codes_for_code_lengths(lengths_code_lengths: CodeLengths) ->  Result<State, DecompressorError> {
 
 		Ok(State::HuffmanCodesForCodeLengths(huffman::codes_from_lengths(&lengths_code_lengths)))
 	}
 
-	fn parse_hlit<R: Read>(in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+	fn parse_hlit<R: Read>(in_stream: &mut BitReader<R>) -> Result<State, DecompressorError> {
 		match in_stream.read_u16_from_n_bits(5) {
 			Ok(hlit) => Ok(State::HLit(hlit + 257)),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_hdist<R: Read>(in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+	fn parse_hdist<R: Read>(in_stream: &mut BitReader<R>) -> Result<State, DecompressorError> {
 		match in_stream.read_u8_from_n_bits(5) {
 			Ok(hdist) => Ok(State::HDist(hdist + 1)),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_hclen<R: Read>(in_stream: &mut BitReader<R>) -> result::Result<State, DecompressorError> {
+	fn parse_hclen<R: Read>(in_stream: &mut BitReader<R>) -> Result<State, DecompressorError> {
 		match in_stream.read_u8_from_n_bits(4) {
 			Ok(hclen) => Ok(State::HCLen(hclen + 4)),
 			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
-	fn parse_code_lengths_for_code_length_alphabet<R: Read>(in_stream: &mut BitReader<R>, hclen: u8) -> result::Result<State, DecompressorError> {
+	fn parse_code_lengths_for_code_length_alphabet<R: Read>(in_stream: &mut BitReader<R>, hclen: u8) -> Result<State, DecompressorError> {
 		let mut code_lengths = vec![0; 19];
 		let alphabet_code_lengths = &[16usize, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
 
@@ -198,12 +202,12 @@ impl Decompressor {
 		Ok(State::CodeLengthsForCodeLengthAlphabet(code_lengths))
 	}
 
-	fn parse_code_lengths_for_length_and_distance<R: Read>(in_stream: &mut BitReader<R>, huffman_codes: &HuffmanCodes, hlit: HLit, hdist: HDist) -> result::Result<State, DecompressorError> {
+	fn parse_code_lengths_for_length_and_distance<R: Read>(in_stream: &mut BitReader<R>, huffman_codes: &HuffmanCodes, hlit: HLit, hdist: HDist) -> Result<State, DecompressorError> {
 		let expected_count = hlit as usize + hdist as usize;
 		let mut code_lengths = Vec::with_capacity(expected_count);
 		let mut count_code_lengths = 0usize;
 
-		println!("Expected Count = {:?}", expected_count);
+		// println!("Expected Count = {:?}", expected_count);
 
 		while count_code_lengths < expected_count {
 			let mut tree = huffman_codes.clone();
@@ -230,7 +234,7 @@ impl Decompressor {
 
 			let length_code = symbol as usize;
 
-			println!("Length Code = {:?}", length_code);
+			// println!("Length Code = {:?}", length_code);
 
 			match length_code {
 				0...15 => {
@@ -244,7 +248,7 @@ impl Decompressor {
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 
-					println!("Repeat = {:?}", repeat);
+					// println!("Repeat = {:?}", repeat);
 
 					for _ in 0..repeat {
 						code_lengths.push(last_code_length);
@@ -257,7 +261,7 @@ impl Decompressor {
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 
-					println!("Repeat = {:?}", repeat);
+					// println!("Repeat = {:?}", repeat);
 
 					for _ in 0..repeat {
 						code_lengths.push(0);
@@ -270,7 +274,7 @@ impl Decompressor {
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 
-					println!("Repeat = {:?}", repeat);
+					// println!("Repeat = {:?}", repeat);
 
 					for _ in 0..repeat {
 						code_lengths.push(0);
@@ -281,7 +285,7 @@ impl Decompressor {
 			}
 
 		}
-		println!("code_lengths = {:?}, count = {:?}", code_lengths, code_lengths.len());
+		// println!("code_lengths = {:?}, count = {:?}", code_lengths, code_lengths.len());
 
 		let lengths_literal_length = code_lengths[0..hlit as usize].to_vec();
 		let lengths_distance = code_lengths[hlit as usize..(hlit as usize + hdist as usize)].to_vec();
@@ -289,7 +293,7 @@ impl Decompressor {
 		Ok(State::CodeLengths((lengths_literal_length, lengths_distance)))
 	}
 
-	fn parse_next_symbol<R: Read>(in_stream: &mut BitReader<R>, huffman_codes: &HuffmanCodes) -> result::Result<State, DecompressorError> {
+	fn parse_next_symbol<R: Read>(in_stream: &mut BitReader<R>, huffman_codes: &HuffmanCodes) -> Result<State, DecompressorError> {
 		let mut tree = huffman_codes.clone();
 
 		loop {
@@ -305,7 +309,7 @@ impl Decompressor {
 		}
 	}
 
-	fn parse_extra_bits_for_length_code<R: Read>(in_stream: &mut BitReader<R>, length_code: Symbol) -> result::Result<State, DecompressorError> {
+	fn parse_extra_bits_for_length_code<R: Read>(in_stream: &mut BitReader<R>, length_code: Symbol) -> Result<State, DecompressorError> {
 		let (base_length, count_extra_bits) = match length_code {
 			257...264 => (length_code - 254, 0),
 			265...268 => ( 2 * (length_code - 265) +  11, 1),
@@ -321,7 +325,7 @@ impl Decompressor {
 			Ok(State::Length(base_length))
 		} else {
 
-			println!("Count extra bits for length code = {:?}", count_extra_bits);
+			// println!("Count extra bits for length code = {:?}", count_extra_bits);
 
 			match in_stream.read_u8_from_n_bits(count_extra_bits) {
 				Ok(my_u8) => Ok(State::Length(base_length + (my_u8 as Length))),
@@ -330,7 +334,7 @@ impl Decompressor {
 		}
 	}
 
-	fn parse_distance_code_for_length<R: Read>(in_stream: &mut BitReader<R>, length: Length, huffman_codes: &HuffmanCodes) -> result::Result<State, DecompressorError> {
+	fn parse_distance_code_for_length<R: Read>(in_stream: &mut BitReader<R>, length: Length, huffman_codes: &HuffmanCodes) -> Result<State, DecompressorError> {
 		let mut tree = huffman_codes.clone();
 
 		loop {
@@ -346,7 +350,7 @@ impl Decompressor {
 		}
 	}
 
-	fn parse_extra_bits_for_distance_code<R: Read>(in_stream: &mut BitReader<R>, length_distance_code: LengthDistanceCode) -> result::Result<State, DecompressorError> {
+	fn parse_extra_bits_for_distance_code<R: Read>(in_stream: &mut BitReader<R>, length_distance_code: LengthDistanceCode) -> Result<State, DecompressorError> {
 		let (length, base_distance, count_extra_bits) = match length_distance_code {
 			(length, distance_code @ 0... 3) => (length,          distance_code as Distance +  1,            0),
 			(length, distance_code @ 4... 5) => (length, (   2 * (distance_code as Distance -  4) +     5),  1),
@@ -370,15 +374,16 @@ impl Decompressor {
 			Ok(State::LengthDistance((length, base_distance)))
 		} else {
 
-			println!("Count extra bits for distance code = {:?}", count_extra_bits);
+			// println!("Count extra bits for distance code = {:?}", count_extra_bits);
 
 			match in_stream.read_u16_from_n_bits(count_extra_bits) {
-				Ok(my_u16) => Ok(State::LengthDistance((length, base_distance + (my_u16 as Distance)))),
+				Ok(my_u16) => Ok(State::LengthDistance((length, base_distance + my_u16))),
 				Err(_) => Err(DecompressorError::UnexpectedEOF),
 			}
 		}
 	}
 
+	/// Decompresses some bytes from in_stream. Will return as soon as some bytes have been decompressed.
 	pub fn decompress<R: Read>(&mut self, in_stream: &mut BitReader<R>) -> VecDeque<u8> {
 		let mut buf = VecDeque::new();
 
@@ -393,8 +398,8 @@ impl Decompressor {
 				State::BFinal(bfinal) => {
 					self.header.bfinal = Some(bfinal);
 
-					println!("BFinal = {:?}", self.header.bfinal);
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("BFinal = {:?}", self.header.bfinal);
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::parse_btype(in_stream) {
 						Ok(state) => state,
@@ -404,8 +409,8 @@ impl Decompressor {
 				State::BType(btype) => {
 					self.header.btype = Some(btype.clone());
 
-					println!("BType = {:?}", self.header.btype);
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("BType = {:?}", self.header.btype);
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = State::HandlingHuffmanCodes(btype);
 				},
@@ -427,8 +432,8 @@ impl Decompressor {
 				State::HLit(hlit) => {
 					self.header.hlit = Some(hlit);
 
-					println!("HLit = {:?}", hlit);
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("HLit = {:?}", hlit);
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::parse_hdist(in_stream) {
 						Ok(state) => state,
@@ -438,8 +443,8 @@ impl Decompressor {
 				State::HDist(hdist) => {
 					self.header.hdist = Some(hdist);
 
-					println!("HDist = {:?}", hdist);
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("HDist = {:?}", hdist);
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::parse_hclen(in_stream) {
 						Ok(state) => state,
@@ -449,8 +454,8 @@ impl Decompressor {
 				State::HCLen(hclen) => {
 					self.header.hclen = Some(hclen);
 
-					println!("HCLen = {:?}", hclen);
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("HCLen = {:?}", hclen);
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::parse_code_lengths_for_code_length_alphabet(in_stream, self.header.hclen.unwrap()) {
 						Ok(state) => state,
@@ -460,8 +465,8 @@ impl Decompressor {
 				State::CodeLengthsForCodeLengthAlphabet(code_lengths) => {
 					self.header.code_lengths_for_code_length_alphabet = Some(code_lengths);
 
-					println!("Code Lengths for Code Length Alphabet = {:?}", self.header.code_lengths_for_code_length_alphabet.as_ref().unwrap().clone());
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("Code Lengths for Code Length Alphabet = {:?}", self.header.code_lengths_for_code_length_alphabet.as_ref().unwrap().clone());
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::create_huffman_codes_for_code_lengths(self.header.code_lengths_for_code_length_alphabet.as_ref().unwrap().clone()) {
 						Ok(state) => state,
@@ -471,8 +476,8 @@ impl Decompressor {
 				State::HuffmanCodesForCodeLengths(huffman_codes_code_length) => {
 					self.header.huffman_codes_code_length = Some(huffman_codes_code_length);
 
-					println!("Huffman Codes for Code Lengths = {:?}", self.header.huffman_codes_code_length);
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("Huffman Codes for Code Lengths = {:?}", self.header.huffman_codes_code_length);
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::parse_code_lengths_for_length_and_distance(
 						in_stream,
@@ -503,27 +508,27 @@ impl Decompressor {
 					buf.push_front(byte as u8);
 					self.output_buf.push(byte as u8);
 
-					println!("Literal byte = {:?}", byte);
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("Literal byte = {:?}", byte);
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::parse_next_symbol(in_stream, self.huffman_codes_literal_length.as_ref().unwrap()) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
 					};
 
-					println!("{:?}", buf);
+					// println!("{:?}", buf);
 
 					return buf;
 				},
 				State::Symbol(256) => {
 					// end of block
-					println!("End-Of-Block");
+					// println!("End-Of-Block");
 					self.state = State::EndOfBlock;
 				},
 				State::Symbol(length_code @ 257...285) => {
 					// length code
-					println!("length code {:?}", length_code);
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("length code {:?}", length_code);
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 					self.state = match Self::parse_extra_bits_for_length_code(in_stream, length_code) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
@@ -533,8 +538,8 @@ impl Decompressor {
 					unreachable!();
 				},
 				State::Length(length) => {
-					println!("Length {:?}", length);
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("Length {:?}", length);
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					self.state = match Self::parse_distance_code_for_length(in_stream, length, self.huffman_codes_distance.as_ref().unwrap()) {
 						Ok(state) => state,
@@ -542,16 +547,16 @@ impl Decompressor {
 					};
 				},
 				State::LengthDistanceCode((length, distance_code)) => {
-					println!("<Length, Distance Code> = {:?}", (length, distance_code));
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("<Length, Distance Code> = {:?}", (length, distance_code));
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 					self.state = match Self::parse_extra_bits_for_distance_code(in_stream, (length, distance_code)) {
 						Ok(state) => state,
 						Err(e) => panic!(e),
 					};
 				},
 				State::LengthDistance((length, distance)) => {
-					println!("<Length, Distance> = {:?}", (length, distance));
-					println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
+					// println!("<Length, Distance> = {:?}", (length, distance));
+					// println!("@ bytes: {} and bits: {}", in_stream.global_bit_pos / 8, in_stream.global_bit_pos % 8);
 
 					let l = self.output_buf.len();
 					let from = l - distance as usize;
@@ -569,7 +574,7 @@ impl Decompressor {
 						Err(e) => panic!(e),
 					};
 
-					println!("{:?}", buf);
+					// println!("{:?}", buf);
 
 					return buf;
 				},
