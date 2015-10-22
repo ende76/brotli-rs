@@ -36,78 +36,78 @@ impl Tree {
 		if code.len() == 1 {
 			if code[0] {
 				*self = Tree::Inner(Node{
-					left: match self {
-						&mut Tree::Inner(Node{
+					left: match *self {
+						Tree::Inner(Node{
 							ref left,
 							right: _,
 						}) => left.clone(),
-						&mut Tree::Leaf(_) => unreachable!(),
+						Tree::Leaf(_) => unreachable!(),
 					},
 					right: Some(Box::new(Tree::Leaf(symbol))),
 				});
 			} else {
 				*self = Tree::Inner(Node{
 					left: Some(Box::new(Tree::Leaf(symbol))),
-					right: match self {
-						&mut Tree::Inner(Node{
+					right: match *self {
+						Tree::Inner(Node{
 							left: _,
 							ref right,
 						}) => right.clone(),
-						&mut Tree::Leaf(_) => unreachable!(),
+						Tree::Leaf(_) => unreachable!(),
 					},
 				});
 			}
 		} else {
 			if code[0] {
-				match self {
-					&mut Tree::Inner(Node{
+				match *self {
+					Tree::Inner(Node{
 						left: _,
 						ref mut right,
 					}) => {
-						match right {
-							&mut None => *right = Some(Box::new(Tree::new())),
-							&mut Some(_) => {
+						match *right {
+							None => *right = Some(Box::new(Tree::new())),
+							Some(_) => {
 								// Nothing to do
 							},
 						};
 						// Now we can be sure that right is a subtree. So we can delegate to it.
 
-						match right {
-							&mut Some(ref mut boxed_tree) => (*boxed_tree).insert(code[1..].to_vec(), symbol),
+						match *right {
+							Some(ref mut boxed_tree) => (*boxed_tree).insert(code[1..].to_vec(), symbol),
 							_ => unreachable!(),
 						};
 					},
-					&mut Tree::Leaf(_) => unreachable!(),
+					Tree::Leaf(_) => unreachable!(),
 				}
 			} else {
-				match self {
-					&mut Tree::Inner(Node{
+				match *self {
+					Tree::Inner(Node{
 						ref mut left,
 						right: _,
 					}) => {
-						match left {
-							&mut None => *left = Some(Box::new(Tree::new())),
-							&mut Some(_) => {
+						match *left {
+							None => *left = Some(Box::new(Tree::new())),
+							Some(_) => {
 								// Nothing to do
 							},
 						};
 						// Now we can be sure that left is a subtree. So we can delegate to it.
 
-						match left {
-							&mut Some(ref mut boxed_tree) => (*boxed_tree).insert(code[1..].to_vec(), symbol),
+						match *left {
+							Some(ref mut boxed_tree) => (*boxed_tree).insert(code[1..].to_vec(), symbol),
 							_ => unreachable!(),
 						};
 					},
-					&mut Tree::Leaf(_) => unreachable!(),
+					Tree::Leaf(_) => unreachable!(),
 				}
 			}
 		}
 	}
 
 	pub fn lookup(&self, c: bool) -> Option<Tree> {
-		match self {
-			&Tree::Leaf(_) => None,
-			&Tree::Inner(Node{
+		match *self {
+			Tree::Leaf(_) => None,
+			Tree::Inner(Node{
 				ref left,
 				ref right
 			}) =>

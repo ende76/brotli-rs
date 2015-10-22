@@ -172,13 +172,13 @@ impl Display for DecompressorError {
 
 impl Error for DecompressorError {
 	fn description(&self) -> &str {
-		match self {
-			&DecompressorError::UnexpectedEOF => "Encountered unexpected EOF",
-			&DecompressorError::NonZeroReservedFlag => "Non-zero reserved flag in gzip header",
-			&DecompressorError::NonZeroReservedExtraFlag => "Non-zero reserved extra-flag in gzip header",
-			&DecompressorError::InvalidCompressionMethod => "Invalid compression method in gzip header",
-			&DecompressorError::InvalidIdentification => "Invalid identification in gzip header (not a gzip file)",
-			&DecompressorError::InvalidOS => "Invalid OS identification in gzip header",
+		match *self {
+			DecompressorError::UnexpectedEOF => "Encountered unexpected EOF",
+			DecompressorError::NonZeroReservedFlag => "Non-zero reserved flag in gzip header",
+			DecompressorError::NonZeroReservedExtraFlag => "Non-zero reserved extra-flag in gzip header",
+			DecompressorError::InvalidCompressionMethod => "Invalid compression method in gzip header",
+			DecompressorError::InvalidIdentification => "Invalid identification in gzip header (not a gzip file)",
+			DecompressorError::InvalidOS => "Invalid OS identification in gzip header",
 		}
 	}
 }
@@ -476,7 +476,7 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::InSubDecompressor => {
 					return match self.sub_decompressor.as_mut().unwrap().decompress(&mut self.in_stream) {
-						ref v => if v.len() > 0 {
+						ref v => if !v.is_empty() {
 							for &b in v {
 								self.buf.push_front(b);
 							}
@@ -493,7 +493,7 @@ impl<R: Read> Decompressor<R> {
 
 impl<R: Read> Read for Decompressor<R> {
 	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-		if self.buf.len() == 0 {
+		if self.buf.is_empty() {
 			match self.decompress() {
 				Err(e) => panic!(e),
 				Ok(_) => {},

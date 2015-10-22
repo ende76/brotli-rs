@@ -338,11 +338,11 @@ impl Display for BitReaderError {
 
 impl Error for BitReaderError {
 	fn description(&self) -> &str {
-		match self {
-			&BitReaderError::TooManyBitsForU8 => "Tried reading u8 from more than 8 bits",
-			&BitReaderError::TooManyBitsForU16 => "Tried reading u16 from more than 16 bits",
-			&BitReaderError::TooManyBitsForU32 => "Tried reading u32 from more than 32 bits",
-			&BitReaderError::EOF => "EOF",
+		match *self {
+			BitReaderError::TooManyBitsForU8 => "Tried reading u8 from more than 8 bits",
+			BitReaderError::TooManyBitsForU16 => "Tried reading u16 from more than 16 bits",
+			BitReaderError::TooManyBitsForU32 => "Tried reading u32 from more than 32 bits",
+			BitReaderError::EOF => "EOF",
 			_ => "Generic error",
 		}
 	}
