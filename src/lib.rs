@@ -11,3 +11,6 @@ pub mod bitreader;
 /// brotli provides a Read implementation to wrap a brotli stream, for convenient decompresssion.
 pub mod brotli;
 mod huffman;
+/// ringbuffer provides a data structure RingBuffer that uses a single, fixed-size buffer as if it were connected end-to-end.
+/// This structure lends itself easily to buffering data streams.
+mod ringbuffer;
