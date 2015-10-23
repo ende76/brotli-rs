@@ -3,9 +3,8 @@ extern crate compression;
 fn main() {
 	use std::io::Read;
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(std::fs::File::open("data/plrabn12.txt.compressed").unwrap());
+	let brotli_stream = std::fs::File::open("data/plrabn12.txt.compressed").unwrap();
 
 	let mut decompressed = &mut Vec::new();
 	let _ = Decompressor::new(brotli_stream).read_to_end(&mut decompressed);

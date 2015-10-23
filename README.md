@@ -5,3 +5,10 @@
 [Documentation](http://ende76.github.io/compression/compression/)
 
 Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consumer is thus able to read a compressed stream with usual convenience.
+
+# Changelog
+
+v0.1.0 -> v0.2.0
+================
+
+- Decompressor::new() now accepts a Read, as opposed to a BitReader.

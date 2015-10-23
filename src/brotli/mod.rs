@@ -350,9 +350,8 @@ impl Error for DecompressorError {
 /// ```
 /// use std::io::{ Read, stdout, Write };
 /// use compression::brotli::Decompressor;
-/// use compression::bitreader::BitReader;
 ///
-/// let brotli_stream = BitReader::new(std::fs::File::open("data/64x.compressed").unwrap());
+/// let brotli_stream = std::fs::File::open("data/64x.compressed").unwrap();
 ///
 /// let mut decompressed = &mut Vec::new();
 /// let _ = Decompressor::new(brotli_stream).read_to_end(&mut decompressed);
@@ -383,10 +382,10 @@ pub struct Decompressor<R: Read> {
 }
 
 impl<R: Read> Decompressor<R> {
-	/// Creates Decompressor from BitReader.
-	pub fn new(in_stream: BitReader<R>) -> Decompressor<R> {
+	/// Creates Decompressor from Read.
+	pub fn new(r: R) -> Decompressor<R> {
 		Decompressor{
-			in_stream: in_stream,
+			in_stream: BitReader::new(r),
 			header: Header::new(),
 			buf: VecDeque::new(),
 			output_window: None,

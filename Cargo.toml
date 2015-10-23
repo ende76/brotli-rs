@@ -1,6 +1,6 @@
 [package]
 name = "compression"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Thomas Pickert <ende.mail@web.de>"]
 license = "Apache-2.0"
 repository = "https://github.com/ende76/compression"

@@ -1,67 +1,15 @@
 extern crate compression;
 
-// #[test]
-// /// Simple first test
-// fn should_decompress_xxxxxyyyyy() {
-// 	use std::io::{ Cursor, Read };
-// 	use compression::gzip::Decompressor;
-// 	use compression::bitreader::BitReader;
-
-// 	let gzip_stream = BitReader::new(Cursor::new(vec![0x1fu8, 0x8bu8, 0x08u8, 0x08u8, 0x9fu8, 0x30u8, 0x04u8, 0x56u8, 0x00u8, 0x03u8, 0x78u8, 0x78u8, 0x78u8, 0x78u8, 0x78u8, 0x79u8, 0x79u8, 0x79u8, 0x79u8, 0x79u8, 0x2eu8, 0x74u8, 0x78u8, 0x74u8, 0x00u8, 0xabu8, 0xa8u8, 0x00u8, 0x82u8, 0x4au8, 0x10u8, 0x00u8, 0x00u8, 0x42u8, 0x62u8, 0xddu8, 0x64u8, 0x0au8, 0x00u8, 0x00u8, 0x00u8]));
-// 	let mut decompressed = &mut String::new();
-
-// 	let _ = Decompressor::new(gzip_stream).read_to_string(&mut decompressed);
-
-// 	assert_eq!("xxxxxyyyyy", decompressed);
-// }
-
-// #[test]
-// /// Tests distance codes being read correctly, and output bytes being appened in the right order to output buffer
-// fn should_decompress_abc() {
-// 	use std::io::{ Cursor, Read };
-// 	use compression::gzip::Decompressor;
-// 	use compression::bitreader::BitReader;
-
-// 	let gzip_stream = BitReader::new(Cursor::new(vec![0x1fu8, 0x8bu8, 0x08u8, 0x08u8, 0x31u8, 0x51u8, 0x10u8, 0x56u8, 0x00u8, 0x03u8, 0x61u8, 0x62u8, 0x63u8, 0x2eu8, 0x74u8, 0x78u8, 0x74u8, 0x00u8, 0x4bu8, 0x4cu8, 0x4au8, 0x4eu8, 0x49u8, 0x4du8, 0x4bu8, 0xcfu8, 0xc8u8, 0xccu8, 0xcau8, 0xceu8, 0xc9u8, 0xcdu8, 0xcbu8, 0x2fu8, 0x28u8, 0x2cu8, 0x2au8, 0x2eu8, 0x29u8, 0x2du8, 0x2bu8, 0xafu8, 0xa8u8, 0xacu8, 0x4au8, 0xa4u8, 0xaau8, 0x0cu8, 0x00u8, 0x20u8, 0x2du8, 0x2au8, 0x6au8, 0x68u8, 0x00u8, 0x00u8, 0x00u8]));
-// 	let mut decompressed = &mut String::new();
-
-// 	let _ = Decompressor::new(gzip_stream).read_to_string(&mut decompressed);
-
-// 	assert_eq!("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", decompressed);
-// }
-
-// #[test]
-// /// Tests file with dynamic huffman codes
-// fn should_decompress_abccba() {
-// 	use std::io::{ Cursor, Read };
-// 	use compression::gzip::Decompressor;
-// 	use compression::bitreader::BitReader;
-
-// 	let gzip_stream = BitReader::new(Cursor::new(vec![
-// 		0x1f, 0x8b, 0x08, 0x08, 0xbf, 0x72, 0x10, 0x56, 0x00, 0x03, 0x61, 0x62, 0x63, 0x63, 0x62, 0x61,
-// 		0x2e, 0x74, 0x78, 0x74, 0x00, 0x9d, 0xcb, 0xb7, 0x01, 0x00, 0x20, 0x08, 0x00, 0xb0, 0x5b, 0xb1,
-// 		0x63, 0x45, 0xec, 0x5e, 0xef, 0x0f, 0x66, 0x0f, 0x08, 0xa9, 0xb4, 0xb1, 0x0e, 0x7d, 0x88, 0x29,
-// 		0x17, 0xaa, 0xdc, 0xfa, 0x98, 0x6b, 0x9f, 0x7b, 0xcf, 0x5e, 0x73, 0xf4, 0xc6, 0x95, 0x4a, 0x4e,
-// 		0x31, 0x78, 0x74, 0xd6, 0x68, 0x25, 0x05, 0xc0, 0xc7, 0x79, 0x72, 0xf1, 0x8d, 0xd6, 0x68, 0x00,
-// 		0x00, 0x00
-// 	]));
-// 	let mut decompressed = &mut String::new();
-
-// 	let _ = Decompressor::new(gzip_stream).read_to_string(&mut decompressed);
-
-// 	assert_eq!("abcdefghijklmnopqrstuvwxyzzyxwvutsrqponmlkjihgfedcbaabcdefghijklmnopqrstuvwxyzzyxwvutsrqponmlkjihgfedcba", decompressed);
-// }
 
 #[test]
 /// Brotli: Empty file
 fn should_decompress_to_empty_string() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x06
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -74,11 +22,10 @@ fn should_decompress_to_empty_string() {
 fn should_decompress_to_empty_string_01() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x81, 0x01
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -91,11 +38,10 @@ fn should_decompress_to_empty_string_01() {
 fn should_reject_invalid_stream_with_trailing_non_zero_bits() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0xa1, 0x03,
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -106,11 +52,10 @@ fn should_reject_invalid_stream_with_trailing_non_zero_bits() {
 fn should_decompress_to_empty_string_15() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x1a,
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -123,11 +68,10 @@ fn should_decompress_to_empty_string_15() {
 fn should_decompress_to_empty_string_16() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x81, 0x16, 0x00, 0x58
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -141,11 +85,10 @@ fn should_decompress_to_empty_string_16() {
 fn should_reject_invalid_stream_with_trailing_bytes() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x1a, 0xff
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -160,9 +103,8 @@ fn should_decompress_to_empty_string_17() {
 	use std::fs::{ File };
 	use std::io::{ Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(File::open("data/empty.compressed.17").unwrap());
+	let brotli_stream = File::open("data/empty.compressed.17").unwrap();
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -175,11 +117,10 @@ fn should_decompress_to_empty_string_17() {
 fn should_decompress_to_x() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x0b, 0x00, 0x80, 0x58, 0x03,
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -192,11 +133,10 @@ fn should_decompress_to_x() {
 fn should_decompress_to_x_03() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0xa1, 0x00, 0x00, 0x00, 0x00, 0x81, 0x15, 0x08, 0x04, 0x00,
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -209,11 +149,10 @@ fn should_decompress_to_x_03() {
 fn should_decompress_to_10x10y() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x1b, 0x13, 0x00, 0x00, 0xa4, 0xb0, 0xb2, 0xea, 0x81, 0x47, 0x02, 0x8a,
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -227,15 +166,14 @@ fn should_decompress_to_10x10y() {
 fn should_decompress_ukkonooa() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x1b, 0x76,  0x00, 0x00,  0x14, 0x4a,  0xac, 0x9b,  0x7a, 0xbd,  0xe1, 0x97,  0x9d, 0x7f,  0x8e, 0xc2,
 		0x82, 0x36,  0x0e, 0x9c,  0xe0, 0x90,  0x03, 0xf7,  0x8b, 0x9e,  0x38, 0xe6,  0xb6, 0x00,  0xab, 0xc3,
 		0xca, 0xa0,  0xc2, 0xda,  0x66, 0x36,  0xdc, 0xcd,  0x80, 0x8d,  0x2e, 0x21,  0xd7, 0x6e,  0xe3, 0xea,
 		0x4c, 0xb8,  0xf0, 0xd2,  0xb8, 0xc7,  0xc2, 0x70,  0x4d, 0x3a,  0xf0, 0x69,  0x7e, 0xa1,  0xb8, 0x45,
 		0x73, 0xab,  0xc4, 0x57,  0x1e,
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -249,9 +187,8 @@ fn should_decompress_ukkonooa() {
 fn should_decompress_monkey() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x1b, 0x4a, 0x03, 0x00, 0x8c, 0x94, 0x6e, 0xde, 0xb4, 0xd7, 0x96, 0xb1, 0x78, 0x86, 0xf2, 0x2d,
 		0xe1, 0x1a, 0xbc, 0x0b, 0x1c, 0xba, 0xa9, 0xc7, 0xf7, 0xcc, 0x6e, 0xb2, 0x42, 0x34, 0x51, 0x44,
 		0x8b, 0x4e, 0x13, 0x08, 0xa0, 0xcd, 0x6e, 0xe8, 0x2c, 0xa5, 0x53, 0xa1, 0x9c, 0x5d, 0x2c, 0x1d,
@@ -279,7 +216,7 @@ fn should_decompress_monkey() {
 		0x72, 0x31, 0xf0, 0xb8, 0x94, 0x52, 0x4b, 0x90, 0x31, 0x8e, 0x68, 0xc1, 0xef, 0x90, 0xc9, 0xe5,
 		0xf2, 0x61, 0x09, 0x72, 0x25, 0xad, 0xec, 0xc5, 0x62, 0xc0, 0x0b, 0x12, 0x05, 0xf7, 0x91, 0x75,
 		0x0d, 0xee, 0x61, 0x2e, 0x2e, 0x19, 0x09, 0xc2, 0x03,
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -293,11 +230,10 @@ fn should_decompress_monkey() {
 fn should_decompress_zeros() {
 	use std::io::{ Cursor, Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(Cursor::new(vec![
+	let brotli_stream = Cursor::new(vec![
 		0x5b, 0xff, 0xff, 0x03, 0x60, 0x02, 0x20, 0x1e, 0x0b, 0x28, 0xf7, 0x7e, 0x00,
-	]));
+	]);
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -314,9 +250,8 @@ fn should_decompress_zeros() {
 fn should_decompress_quickfox_repeated() {
 	use std::io::{ Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(std::fs::File::open("data/quickfox_repeated.compressed").unwrap());
+	let brotli_stream = std::fs::File::open("data/quickfox_repeated.compressed").unwrap();
 
 	let mut decompressed = &mut String::new();
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
@@ -333,9 +268,8 @@ fn should_decompress_quickfox_repeated() {
 fn should_decompress_asyoulik_txt() {
 	use std::io::{ Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(std::fs::File::open("data/asyoulik.txt.compressed").unwrap());
+	let brotli_stream = std::fs::File::open("data/asyoulik.txt.compressed").unwrap();
 
 	let mut decompressed = &mut Vec::new();
 	let _ = Decompressor::new(brotli_stream).read_to_end(&mut decompressed);
@@ -352,9 +286,8 @@ fn should_decompress_asyoulik_txt() {
 fn should_decompress_alice29_txt() {
 	use std::io::{ Read };
 	use compression::brotli::Decompressor;
-	use compression::bitreader::BitReader;
 
-	let brotli_stream = BitReader::new(std::fs::File::open("data/alice29.txt.compressed").unwrap());
+	let brotli_stream = std::fs::File::open("data/alice29.txt.compressed").unwrap();
 
 	let mut decompressed = &mut Vec::new();
 	let _ = Decompressor::new(brotli_stream).read_to_end(&mut decompressed);
@@ -423,6 +356,5 @@ fn should_compose_to_identity() {
 
 	assert_eq!(expected, v);
 }
-
 
 
