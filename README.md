@@ -9,6 +9,6 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 # Changelog
 
 v0.1.0 -> v0.2.0
-================
+----------------
 
 - Decompressor::new() now accepts a Read, as opposed to a BitReader.
