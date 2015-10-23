@@ -7,7 +7,7 @@
 //! the uncompressed stream.
 
 /// bitreader wraps a Read to provide bit-oriented read access to a stream.
-pub mod bitreader;
+mod bitreader;
 /// brotli provides a Read implementation to wrap a brotli stream, for convenient decompresssion.
 pub mod brotli;
 mod huffman;
