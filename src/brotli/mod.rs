@@ -915,12 +915,12 @@ impl<R: Read> Decompressor<R> {
 
 		// debug(&format!("Actual Code Lengths = {:?}", actual_code_lengths));
 
-		// @NOTE This might not actually be possible
 		// if actual_code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len() == 1 {
 		// 	// @TODO handle case in lookup from complex prefix code when
 		// 	//       there's only one symbol. In that case, no bit should
 		// 	//       be consumed from the stream, and the one symbol should
 		// 	//       be emitted immediately.
+		// 	// @NOTE This might not be possible to happen.
 		// 	unimplemented!();
 		// }
 
@@ -1009,8 +1009,8 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_block_count(&mut self, prefix_code: &HuffmanCodes) -> Result<BLen, DecompressorError> {
-		// @ NOTE This might never happen.
 		// @TODO consider case NSYM == 1, i.e. symbol should be emitted without consuming from stream
+		// @NOTE This might not be possible to happen.
 		let symbol = prefix_code.lookup_symbol(&mut self.in_stream);
 
 		// debug(&format!("block count symbol = {:?}", symbol));
