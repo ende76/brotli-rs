@@ -2,9 +2,9 @@
 
 [![Build Status](https://api.travis-ci.org/ende76/compression.png?branch=master)](https://travis-ci.org/ende76/compression)
 
-[![Works on stable](https://img.shields.io/badge/works%20on-stable-brightgreen.svg)]
-[![Works on beta](https://img.shields.io/badge/works%20on-beta-brightgreen.svg)]
-[![Works on nightly](https://img.shields.io/badge/works%20on-nightly-brightgreen.svg)]
+![Works on stable](https://img.shields.io/badge/works%20on-stable-brightgreen.svg)
+![Works on beta](https://img.shields.io/badge/works%20on-beta-brightgreen.svg)
+![Works on nightly](https://img.shields.io/badge/works%20on-nightly-brightgreen.svg)
 
 [Documentation](http://ende76.github.io/compression/compression/)
 
