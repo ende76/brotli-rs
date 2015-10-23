@@ -1,9 +1,8 @@
 #![deny(missing_docs, missing_debug_implementations, missing_copy_implementations, trivial_casts, trivial_numeric_casts, unsafe_code, unstable_features, unused_import_braces, unused_qualifications)]
-//! compression provides Read adapter implementations for common compression schemes, most notably
-//! for Brotli.
+//! brotli-rs provides Read adapter implementations the Brotli compression scheme.
 //!
-//!This allows a consumer to wrap a Brotli-compressed Stream into a Decompressor,
-//! allowing the consumer to use the familiar methods provided by the Read trait for consuming
+//! This allows a consumer to wrap a Brotli-compressed Stream into a Decompressor,
+//! using the familiar methods provided by the Read trait for processing
 //! the uncompressed stream.
 
 /// bitreader wraps a Read to provide bit-oriented read access to a stream.

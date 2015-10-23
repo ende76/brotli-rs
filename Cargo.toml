@@ -1,10 +1,10 @@
 [package]
-name = "compression"
+name = "brotli-rs"
 version = "0.2.0"
 authors = ["Thomas Pickert <ende.mail@web.de>"]
 license = "Apache-2.0"
-repository = "https://github.com/ende76/compression"
-documentation = "http://ende76.github.io/compression/compression/"
+repository = "https://github.com/ende76/brotli-rs"
+documentation = "http://ende76.github.io/brotli-rs/compression/"
 
 [[bin]]
 doc = false

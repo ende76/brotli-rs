@@ -349,7 +349,7 @@ impl Error for DecompressorError {
 /// # Examples
 /// ```
 /// use std::io::{ Read, stdout, Write };
-/// use compression::brotli::Decompressor;
+/// use brotli_rs::brotli::Decompressor;
 ///
 /// let brotli_stream = std::fs::File::open("data/64x.compressed").unwrap();
 ///
