@@ -9,7 +9,7 @@ use test::Bencher;
 #[bench]
 fn bench_monkey(b: &mut Bencher) {
 	use std::io::{ Cursor, Read };
-	use brotli_rs::brotli::Decompressor;
+	use brotli_rs::Decompressor;
 
 	b.iter(|| {
 		let brotli_stream = Cursor::new(vec![

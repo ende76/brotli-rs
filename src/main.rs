@@ -2,7 +2,7 @@ extern crate brotli_rs;
 
 fn main() {
 	use std::io::{Read, Write, stdout};
-	use brotli_rs::brotli::Decompressor;
+	use brotli_rs::Decompressor;
 
 	let brotli_stream = std::fs::File::open("data/plrabn12.txt.compressed").unwrap();
 
