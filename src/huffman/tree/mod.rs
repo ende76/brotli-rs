@@ -142,8 +142,6 @@ impl Tree {
 }
 
 
-// These are not very good tests, because they rely
-// on implementation details, for the tree data structure
 mod tests {
 	#[test]
 	fn should_create_empty_tree() {
@@ -163,137 +161,119 @@ mod tests {
 	}
 
 	#[test]
-	fn should_insert_first_level_leaf_on_left() {
-		use super::{Tree, Node};
-		use super::Tree::{ Inner, Leaf };
+	fn should_insert_and_lookup_first_level_leaf_on_left() {
+		use ::bitreader::BitReader;
+		use super::Tree;
+		use std::io::Cursor;
 
+		let mut lookup_stream = BitReader::new(Cursor::new(vec![0]));
 		let mut tree = Tree::new();
 		tree.insert(vec![false], 666);
 
-		assert_eq!(Inner(Node{
-			left: Some(Box::new(Leaf(666))),
-			right: None,
-		}), tree);
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
 	}
 
 	#[test]
-	fn should_insert_first_level_leaf_on_right() {
-		use super::{Tree, Node};
-		use super::Tree::{ Inner, Leaf };
+	fn should_insert_and_lookup_first_level_leaf_on_right() {
+		use ::bitreader::BitReader;
+		use super::Tree;
+		use std::io::Cursor;
 
+		let mut lookup_stream = BitReader::new(Cursor::new(vec![1]));
 		let mut tree = Tree::new();
 		tree.insert(vec![true], 666);
 
-		assert_eq!(Inner(Node{
-			left: None,
-			right: Some(Box::new(Leaf(666))),
-		}), tree);
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
 	}
 
 	#[test]
 	fn should_insert_first_level_leaf_on_left_then_on_right() {
-		use super::{Tree, Node};
-		use super::Tree::{ Inner, Leaf };
+		use ::bitreader::BitReader;
+		use super::Tree;
+		use std::io::Cursor;
 
+		let mut lookup_stream = BitReader::new(Cursor::new(vec![2]));
 		let mut tree = Tree::new();
 		tree.insert(vec![false], 667);
 		tree.insert(vec![true], 666);
 
-		assert_eq!(Inner(Node{
-			left: Some(Box::new(Leaf(667))),
-			right: Some(Box::new(Leaf(666))),
-		}), tree);
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(667));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
 	}
 
 	#[test]
 	fn should_insert_first_level_leaf_on_right_then_on_left() {
-		use super::{Tree, Node};
-		use super::Tree::{ Inner, Leaf };
+		use ::bitreader::BitReader;
+		use super::Tree;
+		use std::io::Cursor;
 
+		let mut lookup_stream = BitReader::new(Cursor::new(vec![1]));
 		let mut tree = Tree::new();
 		tree.insert(vec![true], 666);
 		tree.insert(vec![false], 667);
 
-		assert_eq!(Inner(Node{
-			left: Some(Box::new(Leaf(667))),
-			right: Some(Box::new(Leaf(666))),
-		}), tree);
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(667));
 	}
 
 	#[test]
 	fn should_insert_second_level_leaf_left_right() {
-		use super::{Tree, Node};
-		use super::Tree::{ Inner, Leaf };
+		use ::bitreader::BitReader;
+		use super::Tree;
+		use std::io::Cursor;
 
+		let mut lookup_stream = BitReader::new(Cursor::new(vec![2]));
 		let mut tree = Tree::new();
 		tree.insert(vec![false, true], 6666);
 
-		assert_eq!(Inner(Node{
-			left: Some(Box::new(Inner(Node{
-				left: None,
-				right: Some(Box::new(Leaf(6666))),
-			}))),
-			right: None
-		}), tree);
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
 	}
 
 	#[test]
 	fn should_insert_second_level_leaf_right_left() {
-		use super::{Tree, Node};
-		use super::Tree::{ Inner, Leaf };
+		use ::bitreader::BitReader;
+		use super::Tree;
+		use std::io::Cursor;
 
+		let mut lookup_stream = BitReader::new(Cursor::new(vec![1]));
 		let mut tree = Tree::new();
 		tree.insert(vec![true, false], 6666);
 
-		assert_eq!(Inner(Node{
-			left: None,
-			right: Some(Box::new(Inner(Node{
-				left: Some(Box::new(Leaf(6666))),
-				right: None,
-			}))),
-		}), tree);
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
 	}
 
 	#[test]
 	fn should_lookup_first_level_leaf_left() {
+		use ::bitreader::BitReader;
 		use super::Tree;
-		use super::Tree::Leaf;
+		use std::io::Cursor;
 
+		let mut lookup_stream = BitReader::new(Cursor::new(vec![0b11001]));
 		let mut tree = Tree::new();
 		tree.insert(vec![true, false], 6666);
 		tree.insert(vec![false], 666);
 		tree.insert(vec![true, true], 6667);
 
-		assert_eq!(Some(Leaf(666)), tree.lookup(false));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6667));
 	}
 
 	#[test]
 	fn should_lookup_first_level_leaf_right() {
+		use ::bitreader::BitReader;
 		use super::Tree;
-		use super::Tree::Leaf;
+		use std::io::Cursor;
 
+		let mut lookup_stream = BitReader::new(Cursor::new(vec![0b10100]));
 		let mut tree = Tree::new();
 		tree.insert(vec![false, false], 6666);
 		tree.insert(vec![true], 666);
 		tree.insert(vec![false, true], 6667);
 
-		assert_eq!(Some(Leaf(666)), tree.lookup(true));
-	}
-
-	#[test]
-	fn should_lookup_first_level_node_left() {
-		use super::{ Tree, Node };
-		use super::Tree::{ Inner, Leaf };
-
-		let mut tree = Tree::new();
-		tree.insert(vec![false, false], 6666);
-		tree.insert(vec![true], 666);
-		tree.insert(vec![false, true], 6667);
-
-		assert_eq!(Some(Inner(Node{
-			left: Some(Box::new(Leaf(6666))),
-			right: Some(Box::new(Leaf(6667))),
-		})), tree.lookup(false));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6667));
 	}
 
 	#[test]
