@@ -134,38 +134,6 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
-	/// Reads a u16 from two bytes.
-	/// Only supports little endian, i.e. the least significant byte comes first in the stream.
-	/// Returns a BitReaderError if the stream ends prematurely.
-	pub fn read_u16(&mut self) -> Result<u16, BitReaderError> {
-		let mut buf = &mut [0u8; 2];
-
-		// println!("bit pos = {:?}", self.global_bit_pos);
-
-		match (self.current_byte, self.read_exact(buf)) {
-			(Some(byte), Ok(())) => {
-				self.current_byte = Some(buf[1]);
-				self.global_bit_pos += 16;
-				Ok(((byte as u16) >> self.bit_pos) | ((buf[0] as u16) << (8 - self.bit_pos)) | ((buf[1] as u16) << (16 - self.bit_pos)))
-			},
-			(None, Ok(())) => {
-				self.global_bit_pos += 16;
-				Ok(((buf[1] as u16) << 8) | (buf[0] as u16))
-			},
-			(_, Err(_)) => Err(BitReaderError::Unspecified),
-		}
-	}
-
-	/// Reads a u32 from four bytes.
-	/// Only supports little endian, i.e. the least significant byte comes first in the stream.
-	/// Returns a BitReaderError if the stream ends prematurely.
-	pub fn read_u32(&mut self) -> Result<u32, BitReaderError> {
-		match (self.read_u16(), self.read_u16()) {
-			(Ok(my_u16_0), Ok(my_u16_1)) => Ok((my_u16_1 as u32) << 16 | (my_u16_0 as u32)),
-			(_, _) => Err(BitReaderError::Unspecified),
-		}
-	}
-
 	/// Reads a u32 from n bits.
 	/// Only supports little endian, i.e. the least significant bit comes first in the stream.
 	/// Returns a BitReaderError if the stream ends prematurely, or if n exceeds the number of possible bits.
@@ -234,21 +202,6 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
-	/// Reads n bits from the stream, returns a Vec<bool> result.
-	/// Returns a BitReaderError if the stream ends prematurely.
-	pub fn read_n_bits(&mut self, n: usize) -> Result<Vec<bool>, BitReaderError> {
-		let mut v = Vec::with_capacity(n);
-
-		for _ in 0..n {
-			match self.read_bit() {
-				Ok(bit) => v.push(bit),
-				Err(_) => return Err(BitReaderError::Unspecified),
-			}
-		}
-
-		Ok(v)
-	}
-
 	/// Reads a u8 from n bits from the stream.
 	/// Returns a BitReaderError if the stream ends prematurely, or if n exceeds the
 	/// possible number of bits.
@@ -263,29 +216,6 @@ impl<R: Read> BitReader<R> {
 			match self.read_bit() {
 				Ok(true) => my_u8 = my_u8 | (1 << i),
 				Ok(false) => {},
-				Err(_) => return Err(BitReaderError::Unspecified),
-			}
-		}
-
-		Ok(my_u8)
-	}
-
-	/// Reads a u8 from n bits from the stream.
-	/// As opposed to read_u8_from_n_bits(), this method interprets the bits in reverse order,
-	/// i.e. the most significant bit comes first in the stream.
-	/// Returns a BitReaderError if the stream ends prematurely, or if n exceeds the possible
-	/// number of bits.
-	pub fn read_u8_from_n_bits_reverse(&mut self, n: usize) -> Result<u8, BitReaderError> {
-		if n > 8 {
-			return Err(BitReaderError::TooManyBitsForU8);
-		}
-
-		let mut my_u8 = 0;
-
-		for _ in 0..n {
-			match self.read_bit() {
-				Ok(true) => my_u8 = (my_u8 << 1) | 1,
-				Ok(false) => my_u8 = my_u8 << 1,
 				Err(_) => return Err(BitReaderError::Unspecified),
 			}
 		}
@@ -326,23 +256,6 @@ impl<R: Read> BitReader<R> {
 		}
 
 		Ok(my_u16)
-	}
-
-	/// Reads a vector of u8 until a value of 0 is encountered.
-	/// Returns a Vec<u8> result, where the terminating 0 value is not included.
-	/// Returns a BitReaderError if the stream ends prematurely.
-	pub fn read_zero_terminated_string(&mut self) -> Result<Vec<u8>, BitReaderError> {
-		let mut my_string = Vec::with_capacity(16);
-
-		loop {
-			match self.read_u8() {
-				Ok(0) => break,
-				Ok(byte) => my_string.push(byte),
-				Err(_) => return Err(BitReaderError::Unspecified),
-			}
-		}
-
-		Ok(my_string)
 	}
 
 	/// Reads a vector of u8 of a given length.
@@ -424,20 +337,6 @@ mod tests {
 	}
 
 	#[test]
-	fn should_read_one_u16() {
-		use super::*;
-		use std::io::Cursor;
-
-		let expected = 0x8b1f;
-		let mut br = BitReader::new(Cursor::new(vec![(expected & 0x00ff) as u8, (expected >> 8) as u8]));
-
-		match br.read_u16() {
-			Ok(my_u16) => assert_eq!(expected, my_u16),
-			_ => panic!("Should have read one u16"),
-		}
-	}
-
-	#[test]
 	fn should_read_one_set_bit() {
 		use super::*;
 		use std::io::Cursor;
@@ -493,57 +392,6 @@ mod tests {
 	}
 
 	#[test]
-	fn should_read_u16_after_bit() {
-		use super::*;
-		use std::io::Cursor;
-
-		let mut br = BitReader::new(Cursor::new(vec![0b10001101, 0b00010101, 0b00010101]));
-
-		match (br.read_bit(), br.read_u16()) {
-			(Ok(my_bit), Ok(my_u16)) => {
-				assert!(my_bit);
-				assert_eq!(0b1000101011000110, my_u16);
-			},
-			_ => panic!("Should have read one set bit and one u16"),
-		}
-	}
-
-	#[test]
-	fn should_read_u32() {
-		use super::*;
-		use std::io::Cursor;
-
-		let mut br = BitReader::new(Cursor::new(vec![0x8e, 0x30, 0x04, 0x56]));
-
-		match br.read_u32() {
-			Ok(my_u32) => {
-				assert_eq!(0x5604308e, my_u32);
-			},
-			_ => panic!("Should have read one u32"),
-		}
-	}
-
-	#[test]
-	fn should_read_zero_terminated_string() {
-		use super::*;
-		use std::io::Cursor;
-
-		let mut br = BitReader::new(Cursor::new(vec![
-			0x78, 0x78, 0x78, 0x78, 0x78,
-			0x79, 0x79, 0x79, 0x79, 0x79,
-			0x2e, 0x74, 0x78, 0x74, 0x00,
-			0x78, 0x78, 0x78, 0x78, 0x78,
-			0x79, 0x79, 0x79, 0x79, 0x79,
-			0x2e, 0x74, 0x78, 0x74, 0x00,
-		]));
-
-		match br.read_zero_terminated_string() {
-			Ok(my_vec) => assert_eq!("xxxxxyyyyy.txt", &(String::from_utf8(my_vec).unwrap())),
-			_ => panic!("Should have read zero-terminated string"),
-		}
-	}
-
-	#[test]
 	fn should_read_fixed_length_string() {
 		use super::*;
 		use std::io::Cursor;
@@ -564,32 +412,6 @@ mod tests {
 	}
 
 	#[test]
-	fn should_read_eight_bits() {
-		use super::*;
-		use std::io::Cursor;
-
-		let mut br = BitReader::new(Cursor::new(vec![0x08]));
-
-		match br.read_n_bits(8) {
-			Ok(bits) => assert_eq!(vec![false, false, false, true, false, false, false, false], bits),
-			_ => panic!("Should have read 8 bits"),
-		}
-	}
-
-	#[test]
-	fn should_read_11_bits() {
-		use super::*;
-		use std::io::Cursor;
-
-		let mut br = BitReader::new(Cursor::new(vec![0b11001000, 0b11111110]));
-
-		match br.read_n_bits(11) {
-			Ok(bits) => assert_eq!(vec![false, false, false, true, false, false, true, true, false, true, true], bits),
-			_ => panic!("Should have read 11 bits"),
-		}
-	}
-
-	#[test]
 	fn should_read_29u8_from_5_bits() {
 		use super::*;
 		use std::io::Cursor;
@@ -601,20 +423,6 @@ mod tests {
 			_ => panic!("Should have read 29u8"),
 		}
 	}
-
-	#[test]
-	fn should_read_9u8_from_5_bits_reverse() {
-		use super::*;
-		use std::io::Cursor;
-
-		let mut br = BitReader::new(Cursor::new(vec![0b00110010]));
-
-		match br.read_u8_from_n_bits_reverse(5) {
-			Ok(my_u8) => assert_eq!(9, my_u8),
-			_ => panic!("Should have read 9u8"),
-		}
-	}
-
 
 	#[test]
 	fn should_read_3784u16_from_11_bits() {

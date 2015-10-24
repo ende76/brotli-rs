@@ -1,7 +1,7 @@
 #![feature(test)]
 
 extern crate test;
-extern crate brotli_rs;
+extern crate brotli;
 
 use test::Bencher;
 
@@ -9,7 +9,7 @@ use test::Bencher;
 #[bench]
 fn bench_monkey(b: &mut Bencher) {
 	use std::io::{ Cursor, Read };
-	use brotli_rs::Decompressor;
+	use brotli::Decompressor;
 
 	b.iter(|| {
 		let brotli_stream = Cursor::new(vec![

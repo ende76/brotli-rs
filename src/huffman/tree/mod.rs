@@ -29,10 +29,6 @@ impl Tree {
 		EMPTY_NODE
 	}
 
-	pub fn is_empty(&self) -> bool {
-		*self == EMPTY_NODE
-	}
-
 	pub fn insert(&mut self, code: Vec<bool>, symbol: Symbol) {
 		if code.len() == 1 {
 			if code[0] {
@@ -146,7 +142,7 @@ mod tests {
 	#[test]
 	fn should_create_empty_tree() {
 		use super::Tree;
-		assert!(Tree::new().is_empty());
+		assert_eq!(Tree::new(), super::EMPTY_NODE);
 	}
 
 	#[test]
@@ -156,8 +152,8 @@ mod tests {
 		let tree_1 = Tree::new();
 
 		tree_0.insert(vec![false], 666);
-		assert!(!tree_0.is_empty());
-		assert!(tree_1.is_empty());
+		assert!(tree_0 != super::EMPTY_NODE);
+		assert!(tree_1 == super::EMPTY_NODE);
 	}
 
 	#[test]

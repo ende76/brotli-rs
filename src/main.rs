@@ -1,8 +1,8 @@
-extern crate brotli_rs;
+extern crate brotli;
 
 fn main() {
 	use std::io::{Read, Write, stdout};
-	use brotli_rs::Decompressor;
+	use brotli::Decompressor;
 
 	let brotli_stream = std::fs::File::open("data/plrabn12.txt.compressed").unwrap();
 
@@ -14,6 +14,6 @@ fn main() {
 
 	assert_eq!(expected, decompressed);
 
-	stdout().write_all(decompressed);
+	stdout().write_all(decompressed).ok();
 }
 
