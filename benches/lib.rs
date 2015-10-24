@@ -48,3 +48,63 @@ fn bench_monkey(b: &mut Bencher) {
 }
 
 
+#[bench]
+fn bench_bitstring_version_0(b: &mut Bencher) {
+	fn bit_string_from_code_and_length(code: usize, len: usize) -> Vec<bool> {
+		let mut bits = vec![false; len];
+
+		for i in 0..len {
+			bits[len - i - 1] = (code >> i) & 1 == 1;
+		}
+
+		bits
+	}
+
+	b.iter(|| {
+		assert_eq!(vec![false, false], bit_string_from_code_and_length(0b00, 2));
+		assert_eq!(vec![false, true, true], bit_string_from_code_and_length(0b011, 3));
+		assert_eq!(vec![true, false, false, true, true], bit_string_from_code_and_length(0b10011, 5));
+	});
+}
+
+#[bench]
+fn bench_bitstring_version_1(b: &mut Bencher) {
+	fn bit_string_from_code_and_length(code: usize, len: usize) -> Vec<bool> {
+		let mut bits = Vec::with_capacity(len);
+
+		for i in 0..len {
+			bits.push(code >> (len - 1 - i) & 1 == 1);
+		}
+
+		bits
+	}
+
+	b.iter(|| {
+		assert_eq!(vec![false, false], bit_string_from_code_and_length(0b00, 2));
+		assert_eq!(vec![false, true, true], bit_string_from_code_and_length(0b011, 3));
+		assert_eq!(vec![true, false, false, true, true], bit_string_from_code_and_length(0b10011, 5));
+	});
+}
+
+#[bench]
+fn bench_bitstring_version_2(b: &mut Bencher) {
+	fn bit_string_from_code_and_length(code: usize, bits: &mut[bool]) {
+		let len = bits.len();
+		for (i, mut b) in bits.iter_mut().enumerate() {
+			*b = code & (1 << (len - 1 - i)) != 0;
+		}
+	}
+
+	b.iter(|| {
+		let mut bits_0 = vec![false; 2];
+		bit_string_from_code_and_length(0b00, &mut bits_0);
+		assert_eq!(vec![false, false], bits_0);
+		let mut bits_1 = vec![false; 3];
+		bit_string_from_code_and_length(0b011, &mut bits_1);
+		assert_eq!(vec![false, true, true], bits_1);
+		let mut bits_2 = vec![false; 5];
+		bit_string_from_code_and_length(0b10011, &mut bits_2);
+		assert_eq!(vec![true, false, false, true, true], bits_2);
+	});
+}
+
