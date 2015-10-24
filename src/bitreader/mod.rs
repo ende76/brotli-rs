@@ -52,7 +52,8 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
-	/// Reads a u8 from the stream, reading exactly one byte.
+	/// Reads a u8 from the stream, reading exactly one byte, or, more precisely, 8 bits, which might
+	/// not be aligned to byte boundaries.
 	/// Returns a BitReaderError if the stream ends prematurely.
 	pub fn read_u8(&mut self) -> Result<u8, BitReaderError> {
 		let mut buf = &mut [0u8];
