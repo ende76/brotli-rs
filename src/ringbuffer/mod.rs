@@ -18,7 +18,7 @@ impl<T: Copy + Debug> RingBuffer<T> {
 	pub fn from_vec(v: Vec<T>) -> RingBuffer<T> {
 		let c = v.len();
 		RingBuffer {
-			buf: v.iter().map(|&b| b).rev().collect::<Vec<_>>(),
+			buf: v.iter().rev().map(|&b| b).collect::<Vec<_>>(),
 			pos: c - 1,
 			cap: c,
 		}
