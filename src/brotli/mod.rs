@@ -545,33 +545,18 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_n_bltypes(&mut self) -> Result<NBltypes, DecompressorError> {
-		let mut tree = self.header.bltype_codes.as_ref().unwrap().clone();
 
-		loop {
-			match self.in_stream.read_bit() {
-				Ok(bit) =>
-					match tree.lookup(bit) {
-						Some(Tree::Leaf(symbol)) => {
-							tree = Tree::Leaf(symbol);
-							break;
-						}
-						Some(inner) => tree = inner,
-						None => unreachable!(),
-					},
-				Err(_) => return Err(DecompressorError::UnexpectedEOF),
-			}
-		}
-
-		let (value, extra_bits) = match tree {
-			Tree::Leaf(symbol @ 1...2) => (symbol, 0),
-			Tree::Leaf(symbol @     3) => (symbol, 1),
-			Tree::Leaf(symbol @     5) => (symbol, 2),
-			Tree::Leaf(symbol @     9) => (symbol, 3),
-			Tree::Leaf(symbol @    17) => (symbol, 4),
-			Tree::Leaf(symbol @    33) => (symbol, 5),
-			Tree::Leaf(symbol @    65) => (symbol, 6),
-			Tree::Leaf(symbol @   129) => (symbol, 7),
-			_ => unreachable!(),
+		let (value, extra_bits) = match self.header.bltype_codes.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+			Some(symbol @ 1...2) => (symbol, 0),
+			Some(symbol @     3) => (symbol, 1),
+			Some(symbol @     5) => (symbol, 2),
+			Some(symbol @     9) => (symbol, 3),
+			Some(symbol @    17) => (symbol, 4),
+			Some(symbol @    33) => (symbol, 5),
+			Some(symbol @    65) => (symbol, 6),
+			Some(symbol @   129) => (symbol, 7),
+			Some(_) => unreachable!(),
+			None => return Err(DecompressorError::UnexpectedEOF),
 		};
 
 		if extra_bits > 0 {

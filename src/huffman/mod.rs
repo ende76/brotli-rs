@@ -1,10 +1,10 @@
 pub mod tree;
 
 fn bit_string_from_code_and_length(code: usize, len: usize) -> Vec<bool> {
-	let mut bits = Vec::with_capacity(len);
+	let mut bits = vec![false; len];
 
 	for i in 0..len {
-		bits.push(code >> (len - 1 - i) & 1 == 1);
+		bits[len - i - 1] = (code >> i) & 1 == 1;
 	}
 
 	bits
