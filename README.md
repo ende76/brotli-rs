@@ -8,6 +8,13 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 
 # Changelog
 
+v0.2.0 -> v0.3.0
+----------------
+
+- renamed crate compression -> brotli
+- restructured modules to avoid redundant paths like brotli::brotli::Decompressor (now it's just brotli::Decompressor)
+
+
 v0.1.0 -> v0.2.0
 ----------------
 
