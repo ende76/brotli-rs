@@ -40,11 +40,6 @@ impl<T: Copy + Debug> RingBuffer<T> {
 	pub fn nth(&self, n: usize) -> Result<&T, RingBufferError> {
 		let len = self.buf.len();
 
-		// @Note: Uncommenting this line eats performance, even if Debugging is set to None
-		//        because the format string is being non-lazily evaluated, potentially
-		//        iterating over a huge buffer.
-		// debug(&format!("RingBuffer::nth(): {:?}", (self.clone(), self.buf.len(), n)));
-
 		if n >= len {
 			Err(RingBufferError::ParameterExceededSize)
 		} else {
@@ -52,17 +47,12 @@ impl<T: Copy + Debug> RingBuffer<T> {
 		}
 	}
 
-	pub fn slice_distance_length(&self, n: usize, _l: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
+	pub fn slice_tail(&self, n: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
 		let len = self.buf.len();
 
 		if n >= len {
 			Err(RingBufferError::ParameterExceededSize)
 		} else {
-			// @Note: Uncommenting this line eats performance, even if Debugging is set to None
-			//        because the format string is being non-lazily evaluated, potentially
-			//        iterating over a huge buffer.
-			// debug(&format!("RingBuffer::slice_distance_length(): {:?}", (self.clone(), self.buf.len(), n, len)));
-
 			for (i, mut item) in buf.iter_mut().enumerate() {
 				*item = self.buf[(self.pos + len - n + i) % len];
 			}

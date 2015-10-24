@@ -1636,7 +1636,7 @@ impl<R: Read> Decompressor<R> {
 			let mut window = vec![0; copy_length];
 			let l = cmp::min(distance, copy_length);
 
-			match output_window.slice_distance_length(distance - 1, l, &mut window) {
+			match output_window.slice_tail(distance - 1, &mut window) {
 				Ok(()) => {},
 				Err(_) => return Err(DecompressorError::RingBufferError),
 			}
