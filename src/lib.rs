@@ -2275,10 +2275,24 @@ impl<R: Read> Read for Decompressor<R> {
 	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 		if self.buf.is_empty() {
 			match self.decompress() {
-				Err(e) => {
-
-					panic!(format!("{:?}", e.description()));
-				},
+				Err(e @ DecompressorError::UnexpectedEOF) |
+				Err(e @ DecompressorError::NonZeroFillBit) |
+				Err(e @ DecompressorError::NonZeroReservedBit) |
+				Err(e @ DecompressorError::NonZeroTrailerBit) |
+				Err(e @ DecompressorError::NonZeroTrailerNibble) |
+				Err(e @ DecompressorError::ExpectedEndOfStream) |
+				Err(e @ DecompressorError::InvalidMSkipLen) |
+				Err(e @ DecompressorError::ParseErrorInsertAndCopyLength) |
+				Err(e @ DecompressorError::ParseErrorInsertLiterals) |
+				Err(e @ DecompressorError::ParseErrorContextMap) |
+				Err(e @ DecompressorError::ParseErrorDistanceCode) |
+				Err(e @ DecompressorError::ExceededExpectedBytes) |
+				Err(e @ DecompressorError::ParseErrorComplexPrefixCodeLengths) |
+				Err(e @ DecompressorError::RingBufferError) |
+				Err(e @ DecompressorError::RunLengthExceededSizeOfContextMap) |
+				Err(e @ DecompressorError::InvalidTransformId) |
+				Err(e @ DecompressorError::InvalidLengthInStaticDictionary) |
+				Err(e @ DecompressorError::CodeLengthsChecksum) => return Err(io::Error::new(io::ErrorKind::InvalidData, e.description())),
 				Ok(_) => {},
 			}
 		}
