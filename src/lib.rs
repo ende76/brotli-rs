@@ -440,18 +440,9 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_wbits(&mut self) -> Result<State, DecompressorError> {
-		let mut tree = self.header.wbits_codes.as_ref().unwrap().clone();
-
-		loop {
-			match self.in_stream.read_bit() {
-				Ok(bit) =>
-					match tree.lookup(bit) {
-						Some(Tree::Leaf(symbol)) => return Ok(State::WBits(symbol as WBits)),
-						Some(inner) => tree = inner,
-						None => unreachable!(),
-					},
-				Err(_) => return Err(DecompressorError::UnexpectedEOF),
-			}
+		match self.header.wbits_codes.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+			Some(symbol) => Ok(State::WBits(symbol as WBits)),
+			None => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
