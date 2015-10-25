@@ -101,7 +101,7 @@ impl Tree {
 		}
 	}
 
-	pub fn lookup(&self, c: bool) -> Option<Tree> {
+	fn lookup(&self, c: bool) -> Option<Tree> {
 		match *self {
 			Tree::Leaf(_) => None,
 			Tree::Inner(Node{
