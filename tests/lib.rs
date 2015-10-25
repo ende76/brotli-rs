@@ -298,6 +298,19 @@ fn should_decompress_alice29_txt() {
 	assert_eq!(expected, decompressed);
 }
 
+#[test]
+#[should_panic(expected = "Error parsing code lengths")]
+/// frewsxcv: fuzzer-test
+/// exposes endless-loop vulnerability, if runlength code lengths are not bounded by alphabet size
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/2
+fn should_reject_frewsxcv() {
+	use std::io::{ Cursor, Read };
+	use brotli::Decompressor;
+
+	let mut input = vec![];
+	let _ = Decompressor::new(Cursor::new(vec![0x1b, 0x3f, 0xff, 0xff, 0xdb, 0x4f, 0xe2, 0x99, 0x80, 0x12])).read_to_end(&mut input);
+}
+
 
 fn inverse_move_to_front_transform(v: &mut[u8]) {
 	let mut mtf: Vec<u8> = vec![0; 256];
