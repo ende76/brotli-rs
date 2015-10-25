@@ -441,8 +441,9 @@ impl<R: Read> Decompressor<R> {
 
 	fn parse_wbits(&mut self) -> Result<State, DecompressorError> {
 		match self.header.wbits_codes.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
-			Some(symbol) => Ok(State::WBits(symbol as WBits)),
-			None => Err(DecompressorError::UnexpectedEOF),
+			Ok(Some(symbol)) => Ok(State::WBits(symbol as WBits)),
+			Ok(None) => Err(DecompressorError::UnexpectedEOF),
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
@@ -552,16 +553,17 @@ impl<R: Read> Decompressor<R> {
 	fn parse_n_bltypes(&mut self) -> Result<NBltypes, DecompressorError> {
 
 		let (value, extra_bits) = match self.header.bltype_codes.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
-			Some(symbol @ 1...2) => (symbol, 0),
-			Some(symbol @     3) => (symbol, 1),
-			Some(symbol @     5) => (symbol, 2),
-			Some(symbol @     9) => (symbol, 3),
-			Some(symbol @    17) => (symbol, 4),
-			Some(symbol @    33) => (symbol, 5),
-			Some(symbol @    65) => (symbol, 6),
-			Some(symbol @   129) => (symbol, 7),
-			Some(_) => unreachable!(),
-			None => return Err(DecompressorError::UnexpectedEOF),
+			Ok(Some(symbol @ 1...2)) => (symbol, 0),
+			Ok(Some(symbol @     3)) => (symbol, 1),
+			Ok(Some(symbol @     5)) => (symbol, 2),
+			Ok(Some(symbol @     9)) => (symbol, 3),
+			Ok(Some(symbol @    17)) => (symbol, 4),
+			Ok(Some(symbol @    33)) => (symbol, 5),
+			Ok(Some(symbol @    65)) => (symbol, 6),
+			Ok(Some(symbol @   129)) => (symbol, 7),
+			Ok(Some(_)) => unreachable!(),
+			Ok(None) => return Err(DecompressorError::UnexpectedEOF),
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
 		if extra_bits > 0 {
@@ -731,8 +733,9 @@ impl<R: Read> Decompressor<R> {
 		for i in (h_skip as usize)..symbols.len() {
 
 			code_lengths[i] = match bit_lengths_code.lookup_symbol(&mut self.in_stream) {
-				Some(code_length) => code_length as usize,
-				None => return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths),
+				Ok(Some(code_length)) => code_length as usize,
+				Ok(None) => return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths),
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
 			};
 
 			if code_lengths[i] > 0 {
@@ -758,6 +761,9 @@ impl<R: Read> Decompressor<R> {
 
 		code_lengths = vec![code_lengths[4], code_lengths[0], code_lengths[1], code_lengths[2], code_lengths[3], code_lengths[5], code_lengths[7], code_lengths[9], code_lengths[10], code_lengths[11], code_lengths[12], code_lengths[13], code_lengths[14], code_lengths[15], code_lengths[16], code_lengths[17], code_lengths[8], code_lengths[6]];
 		symbols = (0..18).collect::<Vec<_>>();
+
+		// debug(&format!("Code Lengths = {:?}", code_lengths));
+		// debug(&format!("Symbols = {:?}", symbols));
 
 		let lone_symbol = {
 			if sum < 32 {
@@ -785,7 +791,19 @@ impl<R: Read> Decompressor<R> {
 		let mut last_non_zero_codelength = 8;
 
 		loop {
-			match if lone_symbol == None { prefix_code_code_lengths.lookup_symbol(&mut self.in_stream) } else { lone_symbol } {
+
+			let code_length_code = if lone_symbol == None {
+				match prefix_code_code_lengths.lookup_symbol(&mut self.in_stream) {
+					Ok(symbol) => symbol,
+					Err(_) => return Err(DecompressorError::UnexpectedEOF),
+				}
+			} else { lone_symbol };
+
+			// debug(&format!("lone_symbol = {:?}", lone_symbol));
+
+			// debug(&format!("code length code = {:?}", code_length_code));
+
+			match code_length_code {
 				Some(new_code_length @ 0...15) => {
 					actual_code_lengths.push(new_code_length as usize);
 					last_symbol = Some(new_code_length);
@@ -1002,21 +1020,22 @@ impl<R: Read> Decompressor<R> {
 		// debug(&format!("block count symbol = {:?}", symbol));
 
 		let (base_length, extra_bits) = match symbol {
-			Some(symbol @  0... 3) => (    1 + ((symbol as BLen)      <<  2),  2usize),
-			Some(symbol @  4... 7) => (   17 + ((symbol as BLen -  4) <<  3),  3),
-			Some(symbol @  8...11) => (   49 + ((symbol as BLen -  8) <<  4),  4),
-			Some(symbol @ 12...15) => (  113 + ((symbol as BLen - 12) <<  5),  5),
-			Some(symbol @ 16...17) => (  241 + ((symbol as BLen - 16) <<  6),  6),
-			Some(18) => (  369,  7),
-			Some(19) => (  497,  8),
-			Some(20) => (  753,  9),
-			Some(21) => ( 1265, 10),
-			Some(22) => ( 2289, 11),
-			Some(23) => ( 4337, 12),
-			Some(24) => ( 8433, 13),
-			Some(25) => (16625, 24),
-			Some(_) => unreachable!(),
-			None => return Err(DecompressorError::UnexpectedEOF),
+			Ok(Some(symbol @  0... 3)) => (    1 + ((symbol as BLen)      <<  2),  2usize),
+			Ok(Some(symbol @  4... 7)) => (   17 + ((symbol as BLen -  4) <<  3),  3),
+			Ok(Some(symbol @  8...11)) => (   49 + ((symbol as BLen -  8) <<  4),  4),
+			Ok(Some(symbol @ 12...15)) => (  113 + ((symbol as BLen - 12) <<  5),  5),
+			Ok(Some(symbol @ 16...17)) => (  241 + ((symbol as BLen - 16) <<  6),  6),
+			Ok(Some(18)) => (  369,  7),
+			Ok(Some(19)) => (  497,  8),
+			Ok(Some(20)) => (  753,  9),
+			Ok(Some(21)) => ( 1265, 10),
+			Ok(Some(22)) => ( 2289, 11),
+			Ok(Some(23)) => ( 4337, 12),
+			Ok(Some(24)) => ( 8433, 13),
+			Ok(Some(25)) => (16625, 24),
+			Ok(Some(_)) => unreachable!(),
+			Ok(None) => return Err(DecompressorError::UnexpectedEOF),
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
 		// debug(&format!("(base_length, extra_bits) = {:?}", (base_length, extra_bits)));
@@ -1127,7 +1146,7 @@ impl<R: Read> Decompressor<R> {
 
 		while c_pushed < len {
 			match prefix_tree.lookup_symbol(&mut self.in_stream) {
-				Some(run_length_code) if run_length_code > 0 && run_length_code <= rlemax => {
+				Ok(Some(run_length_code)) if run_length_code > 0 && run_length_code <= rlemax => {
 					// debug(&format!("run length code = {:?}", run_length_code));
 
 					let repeat = match self.in_stream.read_u16_from_n_bits(run_length_code as usize) {
@@ -1146,14 +1165,15 @@ impl<R: Read> Decompressor<R> {
 						}
 					}
 				},
-				Some(context_id) => {
+				Ok(Some(context_id)) => {
 					c_map.push(if context_id == 0 { 0 } else { (context_id - rlemax) as u8 });
 
 					// debug(&format!("context id == {:?}", if context_id == 0 { 0 } else { (context_id - rlemax) as u8 }));
 
 					c_pushed += 1;
 				},
-				None => return Err(DecompressorError::ParseErrorContextMap),
+				Ok(None) => return Err(DecompressorError::ParseErrorContextMap),
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
 			}
 
 			// debug(&format!("{:?}", (c_pushed, len)));
@@ -1232,8 +1252,9 @@ impl<R: Read> Decompressor<R> {
 		// debug(&format!("btype_i = {:?}", btype));
 
 		match self.meta_block.prefix_trees_insert_and_copy_lengths.as_ref().unwrap()[btype].lookup_symbol(&mut self.in_stream) {
-			Some(symbol) => Ok(State::InsertAndCopyLength(symbol)),
-			None => Err(DecompressorError::ParseErrorInsertAndCopyLength),
+			Ok(Some(symbol)) => Ok(State::InsertAndCopyLength(symbol)),
+			Ok(None) => Err(DecompressorError::ParseErrorInsertAndCopyLength),
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
@@ -1307,8 +1328,9 @@ impl<R: Read> Decompressor<R> {
 
 	fn parse_block_switch_command(&mut self, prefix_tree_types: HuffmanCodes, btype: NBltypes, btype_prev: NBltypes, n_bltypes: NBltypes, prefix_tree_counts: HuffmanCodes) -> Result<BlockSwitch, DecompressorError> {
 		let block_type_code = match prefix_tree_types.lookup_symbol(&mut self.in_stream) {
-			Some(block_type_code) => block_type_code,
-			None => unreachable!(),
+			Ok(Some(block_type_code)) => block_type_code,
+			Ok(None) => unreachable!(),
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
 		// debug(&format!("switch block type code = {:?}", block_type_code));
@@ -1429,8 +1451,9 @@ impl<R: Read> Decompressor<R> {
 			// debug(&format!("literal prefix code index = {:?}", index));
 
 			*lit = match self.meta_block.prefix_trees_literals.as_ref().unwrap()[index].lookup_symbol(&mut self.in_stream) {
-				Some(symbol) => symbol as Literal,
-				None => return Err(DecompressorError::ParseErrorInsertLiterals),
+				Ok(Some(symbol)) => symbol as Literal,
+				Ok(None) => return Err(DecompressorError::ParseErrorInsertLiterals),
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
 			};
 
 			// debug(&format!("Literal = {:?}", String::from_utf8(vec![lit])));
@@ -1478,8 +1501,9 @@ impl<R: Read> Decompressor<R> {
 		// debug(&format!("distance prefix code = {:?}", self.meta_block.header.prefix_codes_distances.as_ref().unwrap()[index]));
 
 		let distance_code = match self.meta_block.prefix_trees_distances.as_ref().unwrap()[index].lookup_symbol(&mut self.in_stream) {
-			Some(symbol) => symbol as DistanceCode,
-			None => return Err(DecompressorError::ParseErrorDistanceCode),
+			Ok(Some(symbol)) => symbol as DistanceCode,
+			Ok(None) => return Err(DecompressorError::ParseErrorDistanceCode),
+			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
 		Ok(State::DistanceCode(distance_code))

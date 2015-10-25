@@ -73,30 +73,32 @@ impl Tree {
 		self.buf[insert_at_index] = Some(symbol)
 	}
 
-	fn lookup<R: Read>(&self, r: &mut BitReader<R>) -> Option<Symbol> {
+	fn lookup<R: Read>(&self, r: &mut BitReader<R>) -> Result<Option<Symbol>, ::bitreader::BitReaderError> {
 		let mut lookup_index = 0;
 		loop {
 			lookup_index = match r.read_bit() {
 				Ok(true) => Self::right(lookup_index),
 				Ok(false) => Self::left(lookup_index),
-				Err(_) => return None,
+				Err(e) => return Err(e),
 			};
 
 			if lookup_index > MAX_INDEX {
-				return None;
+				return Ok(None);
 			}
 
 			match self.buf[lookup_index] {
-				Some(symbol) => return Some(symbol),
+				Some(symbol) => return Ok(Some(symbol)),
 				None => {},
 			}
 		}
 	}
 
-	pub fn lookup_symbol<R: Read>(&self, mut r: &mut BitReader<R>) -> Option<Symbol> {
+	pub fn lookup_symbol<R: Read>(&self, mut r: &mut BitReader<R>) -> Result<Option<Symbol>, ::bitreader::BitReaderError, >  {
+		// println!("self.len = {:?}", self.len);
+
 		match self.len {
-			0 => None,
-			1 => self.last_symbol,
+			0 => Ok(None),
+			1 => Ok(self.last_symbol),
 			_ => self.lookup(&mut r),
 		}
 	}
@@ -114,7 +116,7 @@ mod tests {
 		let mut tree = Tree::with_max_depth(1);
 		tree.insert(&vec![false], 666);
 
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(666)));
 	}
 
 	#[test]
@@ -127,7 +129,7 @@ mod tests {
 		let mut tree = Tree::with_max_depth(1);
 		tree.insert(&vec![true], 666);
 
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(666)));
 	}
 
 	#[test]
@@ -141,8 +143,8 @@ mod tests {
 		tree.insert(&vec![false], 667);
 		tree.insert(&vec![true], 666);
 
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(667));
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(667)));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(666)));
 	}
 
 	#[test]
@@ -156,8 +158,8 @@ mod tests {
 		tree.insert(&vec![true], 666);
 		tree.insert(&vec![false], 667);
 
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(667));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(666)));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(667)));
 	}
 
 	#[test]
@@ -170,7 +172,7 @@ mod tests {
 		let mut tree = Tree::with_max_depth(2);
 		tree.insert(&vec![false, true], 6666);
 
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(6666)));
 	}
 
 	#[test]
@@ -183,7 +185,7 @@ mod tests {
 		let mut tree = Tree::with_max_depth(2);
 		tree.insert(&vec![true, false], 6666);
 
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(6666)));
 	}
 
 	#[test]
@@ -198,9 +200,9 @@ mod tests {
 		tree.insert(&vec![false], 666);
 		tree.insert(&vec![true, true], 6667);
 
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6667));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(6666)));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(666)));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(6667)));
 	}
 
 	#[test]
@@ -215,8 +217,8 @@ mod tests {
 		tree.insert(&vec![true], 666);
 		tree.insert(&vec![false, true], 6667);
 
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
-		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6667));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(6666)));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(666)));
+		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Ok(Some(6667)));
 	}
 }
