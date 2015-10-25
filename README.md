@@ -25,7 +25,6 @@ test bench_monkey              ... bench:     __704,282 ns__/iter (+/- 220,068)
 test bench_monkey              ... bench:     __120,745 ns__/iter (+/- 16,627)
 
 
-
 ###v0.2.0 -> v0.3.0
 ----------------
 
