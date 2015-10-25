@@ -7,132 +7,97 @@ use std::io::Read;
 pub type Symbol = u16;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Node {
-	left: Option<Box<Tree>>,
-	right: Option<Box<Tree>>,
+pub struct Tree {
+	buf: Vec<Option<Symbol>>,
+	len: usize,
+	last_symbol: Option<Symbol>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Tree {
-	Leaf(Symbol),
-	Inner(Node),
-}
-
-const EMPTY_NODE: Tree = Tree::Inner(Node{
-	left: None,
-	right: None,
-});
-
+// Index structure in self.buf[]:
+//
+//
+//            0                ^
+//           / \               |
+// left <-- /   \ --> right    |
+//         /     \             |
+//        /       \
+//       /         \       Max Code Length == Max Number of Edges in a Path == Max Tree Depth
+//      1           2      (in this example it's 3)
+//     / \         / \
+//    /   \       /   \        |
+//   3     4     5     6       |
+//  / \   / \   / \   / \      |
+// 7   8 9  10 11 12 13 14     v
+// …
+//
+// Length of self.buf[] = 2^(codelength + 1) - 1
+//
+const MAX_INDEX: usize = 32768 - 2;
 
 impl Tree {
-	pub fn new() -> Tree {
-		EMPTY_NODE
-	}
-
-	pub fn insert(&mut self, code: Vec<bool>, symbol: Symbol) {
-		if code.len() == 1 {
-			if code[0] {
-				*self = Tree::Inner(Node{
-					left: match *self {
-						Tree::Inner(Node{
-							ref left,
-							right: _,
-						}) => left.clone(),
-						Tree::Leaf(_) => unreachable!(),
-					},
-					right: Some(Box::new(Tree::Leaf(symbol))),
-				});
-			} else {
-				*self = Tree::Inner(Node{
-					left: Some(Box::new(Tree::Leaf(symbol))),
-					right: match *self {
-						Tree::Inner(Node{
-							left: _,
-							ref right,
-						}) => right.clone(),
-						Tree::Leaf(_) => unreachable!(),
-					},
-				});
-			}
-		} else {
-			if code[0] {
-				match *self {
-					Tree::Inner(Node{
-						left: _,
-						ref mut right,
-					}) => {
-						match *right {
-							None => *right = Some(Box::new(Tree::new())),
-							Some(_) => {
-								// Nothing to do
-							},
-						};
-						// Now we can be sure that right is a subtree. So we can delegate to it.
-
-						match *right {
-							Some(ref mut boxed_tree) => (*boxed_tree).insert(code[1..].to_vec(), symbol),
-							_ => unreachable!(),
-						};
-					},
-					Tree::Leaf(_) => unreachable!(),
-				}
-			} else {
-				match *self {
-					Tree::Inner(Node{
-						ref mut left,
-						right: _,
-					}) => {
-						match *left {
-							None => *left = Some(Box::new(Tree::new())),
-							Some(_) => {
-								// Nothing to do
-							},
-						};
-						// Now we can be sure that left is a subtree. So we can delegate to it.
-
-						match *left {
-							Some(ref mut boxed_tree) => (*boxed_tree).insert(code[1..].to_vec(), symbol),
-							_ => unreachable!(),
-						};
-					},
-					Tree::Leaf(_) => unreachable!(),
-				}
-			}
+	pub fn with_max_depth(max_depth: usize) -> Tree {
+		Tree {
+			// @NOTE maybe take parameter here, to reserve only the necessary size
+			buf: vec![None; (1 << (max_depth + 1)) - 1],
+			len: 0,
+			last_symbol: None,
 		}
 	}
 
-	fn lookup(&self, c: bool) -> Option<Tree> {
-		match *self {
-			Tree::Leaf(_) => None,
-			Tree::Inner(Node{
-				ref left,
-				ref right
-			}) =>
-				if c {
-					match *right {
-						Some(ref boxed_tree) => Some((**boxed_tree).clone()),
-						None => None,
-					}
-				} else {
-					match *left {
-						Some(ref boxed_tree) => Some((**boxed_tree).clone()),
-						None => None,
-					}
-				}
-		}
+	fn left(index: usize) -> usize {
+		(index << 1) + 1
 	}
 
-	pub fn lookup_symbol<R: Read>(&self, r: &mut BitReader<R>) -> Option<Symbol> {
+	fn right(index: usize) -> usize {
+		(index << 1) + 2
+	}
+
+	pub fn insert(&mut self, code: &[bool], symbol: Symbol) {
+		self.len += 1;
+		self.last_symbol = Some(symbol);
+
+		let mut insert_at_index = 0;
+
+		for b in code {
+			insert_at_index = if *b {
+				Self::right(insert_at_index)
+			} else {
+				Self::left(insert_at_index)
+			};
+		}
+
+		if insert_at_index > MAX_INDEX {
+			panic!("Index {:?} exceeds MAX_INDEX at insert (code = {:?})", insert_at_index, code);
+		}
+
+		self.buf[insert_at_index] = Some(symbol)
+	}
+
+	fn lookup<R: Read>(&self, r: &mut BitReader<R>) -> Option<Symbol> {
+		let mut lookup_index = 0;
 		loop {
-			match r.read_bit() {
-				Ok(bit) =>
-					match self.lookup(bit) {
-						Some(Tree::Leaf(symbol)) => return Some(symbol),
-						Some(inner) => return inner.lookup_symbol(r),
-						None => unreachable!(),
-					},
+			lookup_index = match r.read_bit() {
+				Ok(true) => Self::right(lookup_index),
+				Ok(false) => Self::left(lookup_index),
 				Err(_) => return None,
+			};
+
+			if lookup_index > MAX_INDEX {
+				return None;
 			}
+
+			match self.buf[lookup_index] {
+				Some(symbol) => return Some(symbol),
+				None => {},
+			}
+		}
+	}
+
+	pub fn lookup_symbol<R: Read>(&self, mut r: &mut BitReader<R>) -> Option<Symbol> {
+		match self.len {
+			0 => None,
+			1 => self.last_symbol,
+			_ => self.lookup(&mut r),
 		}
 	}
 }
@@ -140,31 +105,14 @@ impl Tree {
 
 mod tests {
 	#[test]
-	fn should_create_empty_tree() {
-		use super::Tree;
-		assert_eq!(Tree::new(), super::EMPTY_NODE);
-	}
-
-	#[test]
-	fn should_create_different_instances() {
-		use super::Tree;
-		let mut tree_0 = Tree::new();
-		let tree_1 = Tree::new();
-
-		tree_0.insert(vec![false], 666);
-		assert!(tree_0 != super::EMPTY_NODE);
-		assert!(tree_1 == super::EMPTY_NODE);
-	}
-
-	#[test]
 	fn should_insert_and_lookup_first_level_leaf_on_left() {
 		use ::bitreader::BitReader;
 		use super::Tree;
 		use std::io::Cursor;
 
 		let mut lookup_stream = BitReader::new(Cursor::new(vec![0]));
-		let mut tree = Tree::new();
-		tree.insert(vec![false], 666);
+		let mut tree = Tree::with_max_depth(1);
+		tree.insert(&vec![false], 666);
 
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
 	}
@@ -176,8 +124,8 @@ mod tests {
 		use std::io::Cursor;
 
 		let mut lookup_stream = BitReader::new(Cursor::new(vec![1]));
-		let mut tree = Tree::new();
-		tree.insert(vec![true], 666);
+		let mut tree = Tree::with_max_depth(1);
+		tree.insert(&vec![true], 666);
 
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
 	}
@@ -189,9 +137,9 @@ mod tests {
 		use std::io::Cursor;
 
 		let mut lookup_stream = BitReader::new(Cursor::new(vec![2]));
-		let mut tree = Tree::new();
-		tree.insert(vec![false], 667);
-		tree.insert(vec![true], 666);
+		let mut tree = Tree::with_max_depth(1);
+		tree.insert(&vec![false], 667);
+		tree.insert(&vec![true], 666);
 
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(667));
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
@@ -204,9 +152,9 @@ mod tests {
 		use std::io::Cursor;
 
 		let mut lookup_stream = BitReader::new(Cursor::new(vec![1]));
-		let mut tree = Tree::new();
-		tree.insert(vec![true], 666);
-		tree.insert(vec![false], 667);
+		let mut tree = Tree::with_max_depth(1);
+		tree.insert(&vec![true], 666);
+		tree.insert(&vec![false], 667);
 
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(667));
@@ -219,8 +167,8 @@ mod tests {
 		use std::io::Cursor;
 
 		let mut lookup_stream = BitReader::new(Cursor::new(vec![2]));
-		let mut tree = Tree::new();
-		tree.insert(vec![false, true], 6666);
+		let mut tree = Tree::with_max_depth(2);
+		tree.insert(&vec![false, true], 6666);
 
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
 	}
@@ -232,8 +180,8 @@ mod tests {
 		use std::io::Cursor;
 
 		let mut lookup_stream = BitReader::new(Cursor::new(vec![1]));
-		let mut tree = Tree::new();
-		tree.insert(vec![true, false], 6666);
+		let mut tree = Tree::with_max_depth(2);
+		tree.insert(&vec![true, false], 6666);
 
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
 	}
@@ -245,10 +193,10 @@ mod tests {
 		use std::io::Cursor;
 
 		let mut lookup_stream = BitReader::new(Cursor::new(vec![0b11001]));
-		let mut tree = Tree::new();
-		tree.insert(vec![true, false], 6666);
-		tree.insert(vec![false], 666);
-		tree.insert(vec![true, true], 6667);
+		let mut tree = Tree::with_max_depth(2);
+		tree.insert(&vec![true, false], 6666);
+		tree.insert(&vec![false], 666);
+		tree.insert(&vec![true, true], 6667);
 
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
@@ -262,23 +210,13 @@ mod tests {
 		use std::io::Cursor;
 
 		let mut lookup_stream = BitReader::new(Cursor::new(vec![0b10100]));
-		let mut tree = Tree::new();
-		tree.insert(vec![false, false], 6666);
-		tree.insert(vec![true], 666);
-		tree.insert(vec![false, true], 6667);
+		let mut tree = Tree::with_max_depth(2);
+		tree.insert(&vec![false, false], 6666);
+		tree.insert(&vec![true], 666);
+		tree.insert(&vec![false, true], 6667);
 
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6666));
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(666));
 		assert_eq!(tree.lookup_symbol(&mut lookup_stream), Some(6667));
-	}
-
-	#[test]
-	fn should_result_in_none() {
-		use super::Tree;
-
-		let mut tree = Tree::new();
-		tree.insert(vec![true], 666);
-
-		assert_eq!(None, tree.lookup(false));
 	}
 }

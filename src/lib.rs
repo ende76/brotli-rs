@@ -430,10 +430,10 @@ impl<R: Read> Decompressor<R> {
 			vec![true, true, true, true],
 		];
 		let symbols = vec![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
-		let mut codes = Tree::new();
+		let mut codes = Tree::with_max_depth(7);
 
 		for i in 0..bit_patterns.len() {
-			codes.insert(bit_patterns[i].clone(), symbols[i]);
+			codes.insert(&bit_patterns[i], symbols[i]);
 		}
 
 		Ok(State::WBitsCodes(codes))
@@ -540,10 +540,10 @@ impl<R: Read> Decompressor<R> {
 			vec![true, true, true, true],
 		];
 		let symbols = vec![1, 2, 3, 5, 9, 17, 33, 65, 129];
-		let mut codes = Tree::new();
+		let mut codes = Tree::with_max_depth(4);
 
 		for i in 0..bit_patterns.len() {
-			codes.insert(bit_patterns[i].clone(), symbols[i]);
+			codes.insert(&bit_patterns[i], symbols[i]);
 		}
 
 		Ok(State::BltypeCodes(codes))
@@ -724,10 +724,10 @@ impl<R: Read> Decompressor<R> {
 			];
 
 			let symbols = vec![0, 1, 2, 3, 4, 5];
-			let mut codes = Tree::new();
+			let mut codes = Tree::with_max_depth(4);
 
 			for i in 0..bit_lengths_patterns.len() {
-				codes.insert(bit_lengths_patterns[i].clone(), symbols[i]);
+				codes.insert(&bit_lengths_patterns[i], symbols[i]);
 			}
 
 			codes

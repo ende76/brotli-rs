@@ -31,10 +31,10 @@ pub fn codes_from_lengths(lengths: &[usize]) -> tree::Tree {
 		next_code[bits] = code;
 	}
 
-	let mut codes = tree::Tree::new();
+	let mut codes = tree::Tree::with_max_depth(max_length);
 	for (i, &len) in lengths.iter().enumerate() {
 		if len > 0 {
-			codes.insert(bit_string_from_code_and_length(next_code[len], len), i as u16);
+			codes.insert(&bit_string_from_code_and_length(next_code[len], len), i as u16);
 			next_code[len] += 1;
 		}
 	}
@@ -56,11 +56,11 @@ pub fn codes_from_lengths_and_symbols(lengths: &[usize], symbols: &[u16]) -> tre
 		next_code[bits] = code;
 	}
 
-	let mut codes = tree::Tree::new();
+	let mut codes = tree::Tree::with_max_depth(max_length);
 	for i in 0..lengths.len() {
 		let len = lengths[i];
 		if len > 0 {
-			codes.insert(bit_string_from_code_and_length(next_code[len], len), symbols[i]);
+			codes.insert(&bit_string_from_code_and_length(next_code[len], len), symbols[i]);
 			next_code[len] += 1;
 		}
 	}
