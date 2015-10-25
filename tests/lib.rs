@@ -34,7 +34,7 @@ fn should_decompress_to_empty_string_01() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected="non-zero bit")]
 fn should_reject_invalid_stream_with_trailing_non_zero_bits() {
 	use std::io::{ Cursor, Read };
 	use brotli::Decompressor;
@@ -44,7 +44,12 @@ fn should_reject_invalid_stream_with_trailing_non_zero_bits() {
 	]);
 
 	let mut decompressed = &mut String::new();
-	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+	let result = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
 }
 
 #[test]
@@ -91,9 +96,12 @@ fn should_reject_invalid_stream_with_trailing_bytes() {
 	]);
 
 	let mut decompressed = &mut String::new();
-	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+	let result = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
 
-	assert_eq!("", decompressed);
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
 }
 
 
