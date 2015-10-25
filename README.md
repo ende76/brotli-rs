@@ -15,16 +15,13 @@ This is only a minor version bump, with no breakage in usage, but it's exciting 
 
 In Brotli, a lot of work is done with and by prefix codes. Through a change in the internal representation of prefix codes, it was possible to speed the reference benchmark time by a factor of ~7. The benchmark decompresses the contents of the file data/monkey.compressed.
 
-With linked-list-based, recursive tree implementation
------------------------------------------------------
+- With linked-list-based, recursive tree implementation:
 test bench_monkey              ... bench:     866,888 ns/iter (+/- 58,119)
 
-With array-based, iterative tree implementation, before max-depth constraint
-----------------------------------------------------------------------------
+- With array-based, iterative tree implementation, before max-depth constraint:
 test bench_monkey              ... bench:     704,282 ns/iter (+/- 220,068)
 
-With array-based, iterative tree implementation, with max-depth constraint
---------------------------------------------------------------------------
+- With array-based, iterative tree implementation, with max-depth constraint:
 test bench_monkey              ... bench:     120,745 ns/iter (+/- 16,627)
 
 
