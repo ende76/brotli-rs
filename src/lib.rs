@@ -702,16 +702,8 @@ impl<R: Read> Decompressor<R> {
             huffman::codes_from_lengths_and_symbols(&code_lengths, &symbols)))
 	}
 
-	fn parse_complex_prefix_code(&mut self, h_skip: u8, _alphabet_size: usize)
+	fn parse_complex_prefix_code(&mut self, h_skip: u8, alphabet_size: usize)
 			-> Result<(PrefixCode, HuffmanCodes), DecompressorError> {
-		// @TODO: probably need to use parameter alphabet_size here to be able to
-		//        reject streams with excessive repeated trailing zeros, as per section
-		//        3.5. of the RFC:
-		//        "If the number of times to repeat the previous length
-		//         or repeat a zero length would result in more lengths in
-		//         total than the number of symbols in the alphabet, then the
-		//         stream should be rejected as invalid."
-
 		let mut symbols = vec![1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 		let bit_lengths_code = {
 			let bit_lengths_patterns = vec![
@@ -899,6 +891,10 @@ impl<R: Read> Decompressor<R> {
 				Some(_) => unreachable!(),
 				None => return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths),
 			};
+
+			if actual_code_lengths.len() > alphabet_size {
+				return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths);
+			}
 		}
 
 		// debug(&format!(""));
@@ -1830,7 +1826,7 @@ impl<R: Read> Decompressor<R> {
 
 					self.state = match self.parse_n_bltypes_l() {
 						Ok(state) => state,
-						Err(_) => return Err(DecompressorError::UnexpectedEOF),
+						Err(e) => return Err(e),
 					}
 				},
 				State::NBltypesL(n_bltypes_l) => {
@@ -1841,12 +1837,12 @@ impl<R: Read> Decompressor<R> {
 					self.state = if n_bltypes_l >= 2 {
 						match self.parse_prefix_code_block_types_literals() {
 							Ok(state) => state,
-							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+							Err(e) => return Err(e),
 						}
 					} else {
 						match self.parse_n_bltypes_i() {
 							Ok(state) => state,
-							Err(_) => return Err(DecompressorError::UnexpectedEOF),
+							Err(e) => return Err(e),
 						}
 					}
 				},
