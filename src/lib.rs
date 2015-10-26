@@ -1159,7 +1159,7 @@ impl<R: Read> Decompressor<R> {
 					// debug(&format!("run length code = {:?}", run_length_code));
 
 					let repeat = match self.in_stream.read_u16_from_n_bits(run_length_code as usize) {
-						Ok(my_u16) => (1 << run_length_code) + my_u16,
+						Ok(my_u16) => (1u32 << run_length_code) + my_u16 as u32,
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					};
 

@@ -8,6 +8,11 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 
 ## Changelog
 
+###v0.3.9 -> v0.3.10
+----------------
+
+Fixed incorrect type for runlength code. (Thanks, [Corey](https://github.com/frewsxcv)!).
+
 ###v0.3.8 -> v0.3.9
 ----------------
 

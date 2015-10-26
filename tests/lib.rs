@@ -403,6 +403,19 @@ fn should_decompress_to_empty_string_frewsxcv_05() {
 	assert_eq!(Vec::<u8>::new(), input);
 }
 
+#[test]
+/// frewsxcv: fuzzer-test
+/// exposes shift overflow if too small a type has been chosen for runlength code
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/8
+fn should_decompress_to_empty_string_frewsxcv_06() {
+	use std::io::Read;
+	use brotli::Decompressor;
+	let mut input = vec![];
+	let _ = Decompressor::new(&b"\x15\x3f\x60\x00\x15\x3f\x60\x00\x27\xb0\xdb\xa8\x80\x25\x27\xb0\xdb\x40\x80\x12".to_vec() as &[u8]).read_to_end(&mut input);
+
+	assert_eq!(Vec::<u8>::new(), input);
+}
+
 fn inverse_move_to_front_transform(v: &mut[u8]) {
 	let mut mtf: Vec<u8> = vec![0; 256];
 	let v_len = v.len();
