@@ -8,6 +8,11 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 
 ## Changelog
 
+###v0.3.6 -> v0.3.7
+----------------
+
+Went over "unreachable!()" statements, analyzed, and handled error condition properly, if they were reachable through invalid data.
+
 ###v0.3.5 -> v0.3.6
 ----------------
 

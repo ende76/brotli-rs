@@ -309,6 +309,7 @@ enum DecompressorError {
 	CodeLengthsChecksum,
 	ExpectedEndOfStream,
 	ExceededExpectedBytes,
+	InvalidBlockCountCode,
 	InvalidInsertAndCopyLengthCode,
 	InvalidLengthInStaticDictionary,
 	InvalidMSkipLen,
@@ -342,6 +343,7 @@ impl Error for DecompressorError {
 			DecompressorError::CodeLengthsChecksum => "Code length check sum did not add up to 32 in complex prefix code",
 			DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
 			DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
+			DecompressorError::InvalidBlockCountCode => "Encountered invalid value for block count code",
 			DecompressorError::InvalidInsertAndCopyLengthCode => "Encountered invalid value for insert-and-copy-length code",
 			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
 			DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
@@ -567,7 +569,7 @@ impl<R: Read> Decompressor<R> {
 			Ok(Some(symbol @    33)) => (symbol, 5),
 			Ok(Some(symbol @    65)) => (symbol, 6),
 			Ok(Some(symbol @   129)) => (symbol, 7),
-			Ok(Some(_)) => unreachable!(),
+			Ok(Some(_)) => unreachable!(), // confirmed unreachable, the possible symbols are defined in code
 			Ok(None) => return Err(DecompressorError::UnexpectedEOF),
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
@@ -700,7 +702,7 @@ impl<R: Read> Decompressor<R> {
 				symbols[2..4].sort();
 				vec![1, 2, 3, 3]
 			},
-			_ => unreachable!(),
+			_ => unreachable!(), // confirmed unreachable, NSYM is read from 2 bits, tree_select is Some(_) iff NSYM == 4
 		};
 
 		// debug(&format!("Sorted Symbols = {:?}", symbols));
@@ -916,7 +918,7 @@ impl<R: Read> Decompressor<R> {
 
 					last_symbol = Some(17);
 				},
-				Some(_) => unreachable!(),
+				Some(_) => unreachable!(), // confirmed unreachable, the possible symbols are defined in code above
 				None => return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths),
 			};
 
@@ -1018,8 +1020,6 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn parse_block_count(&mut self, prefix_code: &HuffmanCodes) -> Result<BLen, DecompressorError> {
-		// @TODO consider case NSYM == 1, i.e. symbol should be emitted without consuming from stream
-		// @NOTE This might not be possible to happen.
 		let symbol = prefix_code.lookup_symbol(&mut self.in_stream);
 
 		// debug(&format!("block count symbol = {:?}", symbol));
@@ -1038,7 +1038,7 @@ impl<R: Read> Decompressor<R> {
 			Ok(Some(23)) => ( 4337, 12),
 			Ok(Some(24)) => ( 8433, 13),
 			Ok(Some(25)) => (16625, 24),
-			Ok(Some(_)) => unreachable!(),
+			Ok(Some(_)) => return Err(DecompressorError::InvalidBlockCountCode),
 			Ok(None) => return Err(DecompressorError::UnexpectedEOF),
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
