@@ -1,12 +1,9 @@
 extern crate brotli;
 
+use std::io::Read;
+use brotli::Decompressor;
+
 fn main() {
-	use std::io::Read;
-	use brotli::Decompressor;
-
     let mut input = vec![];
-    let result = Decompressor::new(&b"\xb1".to_vec() as &[u8]).read_to_end(&mut input);
-
-    println!("result = {:?}", result);
+    let _ = Decompressor::new(&b"\x1b\x30\x30\x30\x24\x30\xe2\xd9\x30\x30".to_vec() as &[u8]).read_to_end(&mut input);
 }
-

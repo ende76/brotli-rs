@@ -306,24 +306,25 @@ enum State {
 
 #[derive(Debug, Clone, PartialEq)]
 enum DecompressorError {
-	UnexpectedEOF,
+	CodeLengthsChecksum,
+	ExpectedEndOfStream,
+	ExceededExpectedBytes,
+	InvalidInsertAndCopyLengthCode,
+	InvalidLengthInStaticDictionary,
+	InvalidMSkipLen,
+	InvalidTransformId,
 	NonZeroFillBit,
 	NonZeroReservedBit,
 	NonZeroTrailerBit,
 	NonZeroTrailerNibble,
-	ExpectedEndOfStream,
-	InvalidMSkipLen,
+	ParseErrorContextMap,
+	ParseErrorComplexPrefixCodeLengths,
+	ParseErrorDistanceCode,
 	ParseErrorInsertAndCopyLength,
 	ParseErrorInsertLiterals,
-	ParseErrorContextMap,
-	ParseErrorDistanceCode,
-	ExceededExpectedBytes,
-	ParseErrorComplexPrefixCodeLengths,
 	RingBufferError,
 	RunLengthExceededSizeOfContextMap,
-	InvalidTransformId,
-	InvalidLengthInStaticDictionary,
-	CodeLengthsChecksum,
+	UnexpectedEOF,
 }
 
 impl Display for DecompressorError {
@@ -336,24 +337,25 @@ impl Display for DecompressorError {
 impl Error for DecompressorError {
 	fn description(&self) -> &str {
 		match *self {
-			DecompressorError::UnexpectedEOF => "Encountered unexpected EOF",
+			DecompressorError::CodeLengthsChecksum => "Code length check sum did not add up to 32 in complex prefix code",
+			DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
+			DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
+			DecompressorError::InvalidInsertAndCopyLengthCode => "Encountered invalid value for insert-and-copy-length code",
+			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
+			DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
+			DecompressorError::InvalidTransformId => "Encountered invalid transform id in reference to static dictionary",
 			DecompressorError::NonZeroFillBit => "Enocuntered non-zero fill bit",
 			DecompressorError::NonZeroReservedBit => "Enocuntered non-zero reserved bit",
 			DecompressorError::NonZeroTrailerBit => "Enocuntered non-zero bit trailing the stream",
 			DecompressorError::NonZeroTrailerNibble => "Enocuntered non-zero nibble trailing",
-			DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
-			DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
-			DecompressorError::ParseErrorInsertAndCopyLength => "Error parsing Insert And Copy Length",
-			DecompressorError::ParseErrorInsertLiterals => "Error parsing Insert Literals",
-			DecompressorError::ParseErrorDistanceCode => "Error parsing DistanceCode",
-			DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
 			DecompressorError::ParseErrorContextMap => "Error parsing context map",
 			DecompressorError::ParseErrorComplexPrefixCodeLengths => "Error parsing code lengths for complex prefix code",
+			DecompressorError::ParseErrorDistanceCode => "Error parsing DistanceCode",
+			DecompressorError::ParseErrorInsertAndCopyLength => "Error parsing Insert And Copy Length",
+			DecompressorError::ParseErrorInsertLiterals => "Error parsing Insert Literals",
 			DecompressorError::RingBufferError => "Error accessing distance ring buffer",
 			DecompressorError::RunLengthExceededSizeOfContextMap => "Run length excceeded declared length of context map",
-			DecompressorError::InvalidTransformId => "Encountered invalid transform id in reference to static dictionary",
-			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
-			DecompressorError::CodeLengthsChecksum => "Code length check sum did not add up to 32 in complex prefix code",
+			DecompressorError::UnexpectedEOF => "Encountered unexpected EOF",
 		}
 	}
 }
@@ -1271,7 +1273,7 @@ impl<R: Read> Decompressor<R> {
 			Some(512...575) => (8, 16),
 			Some(576...639) => (16, 8),
 			Some(640...703) => (16, 16),
-			_ => unreachable!(),
+			_ => return Err(DecompressorError::InvalidInsertAndCopyLengthCode),
 		};
 
 		insert_length_code += 0x07 & (self.meta_block.insert_and_copy_length.unwrap() as u8 >> 3);
@@ -2275,24 +2277,7 @@ impl<R: Read> Read for Decompressor<R> {
 	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 		if self.buf.is_empty() {
 			match self.decompress() {
-				Err(e @ DecompressorError::UnexpectedEOF) |
-				Err(e @ DecompressorError::NonZeroFillBit) |
-				Err(e @ DecompressorError::NonZeroReservedBit) |
-				Err(e @ DecompressorError::NonZeroTrailerBit) |
-				Err(e @ DecompressorError::NonZeroTrailerNibble) |
-				Err(e @ DecompressorError::ExpectedEndOfStream) |
-				Err(e @ DecompressorError::InvalidMSkipLen) |
-				Err(e @ DecompressorError::ParseErrorInsertAndCopyLength) |
-				Err(e @ DecompressorError::ParseErrorInsertLiterals) |
-				Err(e @ DecompressorError::ParseErrorContextMap) |
-				Err(e @ DecompressorError::ParseErrorDistanceCode) |
-				Err(e @ DecompressorError::ExceededExpectedBytes) |
-				Err(e @ DecompressorError::ParseErrorComplexPrefixCodeLengths) |
-				Err(e @ DecompressorError::RingBufferError) |
-				Err(e @ DecompressorError::RunLengthExceededSizeOfContextMap) |
-				Err(e @ DecompressorError::InvalidTransformId) |
-				Err(e @ DecompressorError::InvalidLengthInStaticDictionary) |
-				Err(e @ DecompressorError::CodeLengthsChecksum) => return Err(io::Error::new(io::ErrorKind::InvalidData, e.description())),
+				Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e.description())),
 				Ok(_) => {},
 			}
 		}

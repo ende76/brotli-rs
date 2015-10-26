@@ -328,13 +328,31 @@ fn should_reject_frewsxcv_00() {
 #[should_panic(expected = "unexpected EOF")]
 /// frewsxcv: fuzzer-test
 /// exposes uncaught panic in read() implementation
-/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/2
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/3
 fn should_reject_frewsxcv_01() {
 	use std::io::Read;
 	use brotli::Decompressor;
 
     let mut input = vec![];
     let result = Decompressor::new(&b"\xb1".to_vec() as &[u8]).read_to_end(&mut input);
+
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
+}
+
+#[test]
+#[should_panic(expected = "invalid value for insert-and-copy-length code")]
+/// frewsxcv: fuzzer-test
+/// exposes panic in "unreachable" branch in insert-and-copy-length decoding
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/4
+fn should_reject_frewsxcv_02() {
+	use std::io::Read;
+	use brotli::Decompressor;
+
+    let mut input = vec![];
+    let result = Decompressor::new(&b"\x1b\x30\x30\x30\x24\x30\xe2\xd9\x30\x30".to_vec() as &[u8]).read_to_end(&mut input);
 
 	match result {
 		Err(e) => panic!("{:?}", e),
