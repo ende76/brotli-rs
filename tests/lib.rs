@@ -377,6 +377,19 @@ fn should_reject_frewsxcv_03() {
 	}
 }
 
+#[test]
+/// frewsxcv: fuzzer-test
+/// edge case for block type value, which _looks_ like a u8 but is just slightly bigger
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/6
+fn should_decompress_to_empty_string_frewsxcv_04() {
+	use std::io::Read;
+	use brotli::Decompressor;
+	let mut input = vec![];
+	let _ = Decompressor::new(&b"\x1b\x3f\x00\xff\xff\xb0\xe2\x99\x80\x12".to_vec() as &[u8]).read_to_end(&mut input);
+
+	assert_eq!(Vec::<u8>::new(), input);
+}
+
 
 fn inverse_move_to_front_transform(v: &mut[u8]) {
 	let mut mtf: Vec<u8> = vec![0; 256];

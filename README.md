@@ -8,6 +8,11 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 
 ## Changelog
 
+###v0.3.7 -> v0.3.8
+----------------
+
+Fixed some value range checks on block types and ntree* (Thanks, [Corey](https://github.com/frewsxcv)!).
+
 ###v0.3.6 -> v0.3.7
 ----------------
 

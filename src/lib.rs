@@ -60,7 +60,8 @@ type Literal = u8;
 type Literals = Vec<Literal>;
 type MLenLiterals = Literals;
 type InsertLiterals = Literals;
-type NBltypes = u8;
+type NBltypes = u16;
+type NTrees = NBltypes;
 type BLen = u32;
 type BlockSwitch = (NBltypes, BLen);
 type NPostfix = u8;
@@ -68,7 +69,6 @@ type NDirect = u8;
 type ContextMode = u16;
 type ContextModes = Vec<ContextMode>;
 type ContextMap = Vec<u8>;
-type NTrees = u8;
 type NSym = u8;
 type Symbol = u16;
 type Symbols = Vec<Symbol>;
@@ -579,12 +579,12 @@ impl<R: Read> Decompressor<R> {
 		};
 
 		if extra_bits > 0 {
-			match self.in_stream.read_u8_from_n_bits(extra_bits) {
-				Ok(extra) => Ok(value as NBltypes + extra),
+			match self.in_stream.read_u16_from_n_bits(extra_bits) {
+				Ok(extra) => Ok(value + extra),
 				Err(_) => Err(DecompressorError::UnexpectedEOF),
 			}
 		} else {
-			Ok(value as NBltypes)
+			Ok(value)
 		}
 	}
 
@@ -1139,7 +1139,7 @@ impl<R: Read> Decompressor<R> {
 
 		// debug(&format!("RLEMAX = {:?}", rlemax));
 
-		let alphabet_size = (rlemax + n_trees as u16) as usize;
+		let alphabet_size = (rlemax + n_trees) as usize;
 
 		// debug(&format!("Alphabet Size = {:?}", alphabet_size));
 
@@ -1347,7 +1347,7 @@ impl<R: Read> Decompressor<R> {
 		let block_type = match block_type_code {
 			0 => btype_prev,
 			1 => (btype + 1) % n_bltypes,
-			2...255 => (block_type_code - 2) as u8,
+			2...258 => block_type_code - 2,
 			_ => return Err(DecompressorError::InvalidBlockTypeCode),
 		};
 
