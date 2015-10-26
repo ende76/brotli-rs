@@ -477,6 +477,24 @@ fn should_reject_frewsxcv_09() {
 	}
 }
 
+#[test]
+#[should_panic(expected="invalid value for block type")]
+/// frewsxcv: fuzzer-test
+/// exposes uncaught invalid block type in block switch command
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/10
+fn should_reject_frewsxcv_10() {
+	use std::io::Read;
+	use brotli::Decompressor;
+
+	let mut input = vec![];
+	let result = Decompressor::new(&b"\x51\xac\x00\x48\x2f\x73\x14\x01\x14\x00\x00\x01\x00\x14\x14\xff\x00\x02\x00\x00\x00\x00\x00\x64\x14\x24\x14\x14\x14\x14\x14\x80\x00\x00\x14\xff\xff\x00\x00\x14\x14\x14\x14\x14\x14\x80\x00\x80".to_vec() as &[u8]).read_to_end(&mut input);
+
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
+}
+
 fn inverse_move_to_front_transform(v: &mut[u8]) {
 	let mut mtf: Vec<u8> = vec![0; 256];
 	let v_len = v.len();

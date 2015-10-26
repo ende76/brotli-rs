@@ -270,6 +270,7 @@ enum DecompressorError {
 	ExceededExpectedBytes,
 	InvalidBlockCountCode,
 	InvalidBlockSwitchCommandCode,
+	InvalidBlockType,
 	InvalidBlockTypeCode,
 	InvalidInsertAndCopyLengthCode,
 	InvalidLengthInStaticDictionary,
@@ -307,6 +308,7 @@ impl Error for DecompressorError {
 			DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
 			DecompressorError::InvalidBlockCountCode => "Encountered invalid value for block count code",
 			DecompressorError::InvalidBlockSwitchCommandCode => "Encountered invalid value for block switch command code",
+			DecompressorError::InvalidBlockType => "Encountered invalid value for block type",
 			DecompressorError::InvalidBlockTypeCode => "Encountered invalid value for block type code",
 			DecompressorError::InvalidInsertAndCopyLengthCode => "Encountered invalid value for insert-and-copy-length code",
 			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
@@ -1301,14 +1303,16 @@ impl<R: Read> Decompressor<R> {
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		// debug(&format!("switch block type code = {:?}", block_type_code));
-
 		let block_type = match block_type_code {
 			0 => btype_prev,
 			1 => (btype + 1) % n_bltypes,
 			2...258 => block_type_code - 2,
 			_ => return Err(DecompressorError::InvalidBlockTypeCode),
 		};
+
+		if block_type >= n_bltypes {
+			return Err(DecompressorError::InvalidBlockType);
+		}
 
 		// debug(&format!("block type = {:?}", block_type));
 
@@ -1379,6 +1383,9 @@ impl<R: Read> Decompressor<R> {
 			};
 
 			let btype = self.meta_block.btype_l as usize;
+
+			// println!("btype = {:?}", btype);
+
 			let context_mode = self.meta_block.context_modes_literals.as_ref().unwrap()[btype];
 
 			// debug(&format!("[p1, p2] = {:?}", self.literal_buf));
@@ -1410,13 +1417,15 @@ impl<R: Read> Decompressor<R> {
 				_ => unreachable!(), // confirmed unreachable, context_mode is always read from two bits
 			};
 
-			// debug(&format!("(btype, cid) = {:?}", (btype, cid)));
+			// println!("(btype, cid) = {:?}", (btype, cid));
 
 			let index = self.meta_block.header.c_map_l.as_ref().unwrap()[btype * 64 + cid] as usize;
 
 			// debug(&format!("global bit pos = {:?}", self.in_stream.global_bit_pos));
 
-			// debug(&format!("literal prefix code index = {:?}", index));
+			// println!("literal prefix code index = {:?}", index);
+
+
 
 			*lit = match self.meta_block.prefix_trees_literals.as_ref().unwrap()[index].lookup_symbol(&mut self.in_stream) {
 				Ok(Some(symbol)) => symbol as Literal,
