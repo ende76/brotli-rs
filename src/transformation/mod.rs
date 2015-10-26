@@ -7,7 +7,7 @@ fn uppercase_all(base_word: &[u8]) -> Vec<u8> {
 
 	while i < l {
 		match base_word[i] {
-			1...96|123...191 => {
+			0...96|123...191 => {
 				v.push(base_word[i]);
 				i += 1;
 			},

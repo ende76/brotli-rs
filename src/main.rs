@@ -5,5 +5,7 @@ use brotli::Decompressor;
 
 fn main() {
 	let mut input = vec![];
-	let _ = Decompressor::new(&b"\x12\x1b\x00\x1e\x11\x00\x05\x09\x21\x00\x05\x04\x43\x05\xf5\x21\x1e\x11\x00\x05\xf5\x21\x00\x05\x04\x43".to_vec() as &[u8]).read_to_end(&mut input);
+	let _ = Decompressor::new(&b"\x1b\x3f\x01\xf0\x24\xb0\xc2\xa4\x80\x54\xff\xd7\x24\xb0\x12".to_vec() as &[u8]).read_to_end(&mut input);
+
+	println!("{:?}", String::from_utf8(input));
 }

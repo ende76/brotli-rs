@@ -8,6 +8,11 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 
 ## Changelog
 
+###v0.3.11 -> v0.3.12
+----------------
+
+Fixed uncaught zero-byte in word transformation. (Thanks, [Corey](https://github.com/frewsxcv)!).
+
 ###v0.3.10 -> v0.3.11
 ----------------
 

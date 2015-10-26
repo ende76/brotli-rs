@@ -420,13 +420,27 @@ fn should_decompress_to_empty_string_frewsxcv_06() {
 /// frewsxcv: fuzzer-test
 /// exposes arithmetic overflow in word transformation
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/9
-fn should_decompress_to_empty_string_frewsxcv_07() {
+fn should_decompress_to_string_frewsxcv_07() {
 	use std::io::Read;
 	use brotli::Decompressor;
 	let mut input = vec![];
 	let _ = Decompressor::new(&b"\x12\x1b\x00\x1e\x11\x00\x05\x09\x21\x00\x05\x04\x43\x05\xf5\x21\x1e\x11\x00\x05\xf5\x21\x00\x05\x04\x43".to_vec() as &[u8]).read_to_end(&mut input);
 
 	assert_eq!(vec![46, 103, 105, 102, 34, 32, 97, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 0, 4, 2, 0, 0, 0, 2, 4, 0, 5, 3, 7, 0, 2, 0, 0, 0], input);
+}
+
+#[test]
+/// frewsxcv: fuzzer-test
+/// exposes uncaught byte value 0 in transformation code
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/10
+fn should_decompress_to_string_frewsxcv_08() {
+	use std::io::Read;
+	use brotli::Decompressor;
+
+	let mut input = vec![];
+	let _ = Decompressor::new(&b"\x1b\x3f\x01\xf0\x24\xb0\xc2\xa4\x80\x54\xff\xd7\x24\xb0\x12".to_vec() as &[u8]).read_to_end(&mut input);
+
+	assert_eq!(vec![88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 32, 216, 131, 217, 170, 216, 135, 217, 165, 61, 39, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 32, 1, 0, 0, 0, 3, 0, 0, 0, 61, 39, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88], input);
 }
 
 fn inverse_move_to_front_transform(v: &mut[u8]) {
