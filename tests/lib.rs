@@ -360,6 +360,24 @@ fn should_reject_frewsxcv_02() {
 	}
 }
 
+#[test]
+#[should_panic(expected = "invalid complex prefix code")]
+/// frewsxcv: fuzzer-test
+/// exposes index-out-of-bounds error created by an invalid stream that results in all-zero codelengths for a complex prefix code
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/5
+fn should_reject_frewsxcv_03() {
+	use std::io::Read;
+	use brotli::Decompressor;
+    let mut input = vec![];
+    let result = Decompressor::new(&b"\x30\x30\x40\x00\x00\x00\x00\x00".to_vec() as &[u8]).read_to_end(&mut input);
+
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
+}
+
+
 fn inverse_move_to_front_transform(v: &mut[u8]) {
 	let mut mtf: Vec<u8> = vec![0; 256];
 	let v_len = v.len();

@@ -8,6 +8,11 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 
 ## Changelog
 
+###v0.3.5 -> v0.3.6
+----------------
+
+Fixed a case where an invalid prefix code with all-zero codelengths could create an index-out-of-bounds panic. (Thanks, [Corey](https://github.com/frewsxcv)!).
+
 ###v0.3.4 -> v0.3.5
 ----------------
 

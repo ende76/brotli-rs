@@ -313,6 +313,8 @@ enum DecompressorError {
 	InvalidLengthInStaticDictionary,
 	InvalidMSkipLen,
 	InvalidTransformId,
+	LessThanTwoNonZeroCodeLengths,
+	NoCodeLength,
 	NonZeroFillBit,
 	NonZeroReservedBit,
 	NonZeroTrailerBit,
@@ -344,6 +346,8 @@ impl Error for DecompressorError {
 			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
 			DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
 			DecompressorError::InvalidTransformId => "Encountered invalid transform id in reference to static dictionary",
+			DecompressorError::LessThanTwoNonZeroCodeLengths => "Encountered invalid complex prefix code with less than two non-zero codelengths",
+			DecompressorError::NoCodeLength => "Encountered invalid complex prefix code with all zero codelengths",
 			DecompressorError::NonZeroFillBit => "Enocuntered non-zero fill bit",
 			DecompressorError::NonZeroReservedBit => "Enocuntered non-zero reserved bit",
 			DecompressorError::NonZeroTrailerBit => "Enocuntered non-zero bit trailing the stream",
@@ -758,6 +762,10 @@ impl<R: Read> Decompressor<R> {
 			}
 		}
 
+		if code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().is_empty() {
+			return Err(DecompressorError::NoCodeLength);
+		}
+
 		// debug(&format!("Code Lengths = {:?}", code_lengths));
 		// debug(&format!("Symbols = {:?}", symbols));
 
@@ -921,14 +929,9 @@ impl<R: Read> Decompressor<R> {
 
 		// debug(&format!("Actual Code Lengths = {:?}", actual_code_lengths));
 
-		// if actual_code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len() == 1 {
-		// 	// @TODO handle case in lookup from complex prefix code when
-		// 	//       there's only one symbol. In that case, no bit should
-		// 	//       be consumed from the stream, and the one symbol should
-		// 	//       be emitted immediately.
-		// 	// @NOTE This might not be possible to happen.
-		// 	unimplemented!();
-		// }
+		if actual_code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len() < 2 {
+			return Err(DecompressorError::LessThanTwoNonZeroCodeLengths);
+		}
 
 		Ok((PrefixCode::Complex,
 			huffman::codes_from_lengths(&actual_code_lengths)))
@@ -940,7 +943,7 @@ impl<R: Read> Decompressor<R> {
 			Err(e) => return Err(e),
 		};
 
-		// debug(&format!("Prefix Code Kind = {:?}", prefix_code_kind));
+		// println!("Prefix Code Kind = {:?}", prefix_code_kind);
 
 		match prefix_code_kind {
 			PrefixCodeKind::Complex(h_skip) => self.parse_complex_prefix_code(h_skip, alphabet_size),
