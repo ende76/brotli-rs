@@ -130,7 +130,7 @@ impl<R: Read> BitReader<R> {
 					},
 				}
 			},
-			_ => unreachable!(),
+			_ => unreachable!(), // confirmed unreachable, code controls bit_pos to have value 0...7
 		}
 	}
 

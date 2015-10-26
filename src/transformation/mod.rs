@@ -31,7 +31,7 @@ fn uppercase_all(base_word: &[u8]) -> Vec<u8> {
 				}
 				i = i + 3;
 			},
-			_ => unreachable!(),
+			_ => unreachable!(), // confirmed unreachable, all byte values covered
 		}
 	}
 
@@ -69,7 +69,7 @@ fn uppercase_first(base_word: &[u8]) -> Vec<u8> {
 			}
 			i = 3;
 		},
-		_ => unreachable!(),
+		_ => unreachable!(), // confirmed unreachable, all byte values covered
 	}
 
 	[v, Vec::from(&base_word[i..])].concat()
@@ -199,7 +199,7 @@ pub fn transformation(id: usize, base_word: &[u8]) -> Vec<u8> {
 		118 => [vec![0x20], uppercase_first(base_word), vec![0x3d, 0x22]].concat(),
 		119 => [vec![0x20], uppercase_all(base_word), vec![0x3d, 0x27]].concat(),
 		120 => [vec![0x20], uppercase_first(base_word), vec![0x3d, 0x27]].concat(),
-		_ => unreachable!(),
+		_ => unreachable!(), // confirmed unreachable, transform_id is checked prior to call
 	}
 }
 
