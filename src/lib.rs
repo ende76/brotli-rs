@@ -1448,7 +1448,7 @@ impl<R: Read> Decompressor<R> {
 
 					(LUT_2[p1] << 3) | LUT_2[p2]
 				},
-				_ => unreachable!(),
+				_ => unreachable!(), // confirmed unreachable, context_mode is always read from two bits
 			};
 
 			// debug(&format!("(btype, cid) = {:?}", (btype, cid)));
@@ -1479,7 +1479,7 @@ impl<R: Read> Decompressor<R> {
 		// check for implicit distance 0 ([…]"as indicated by the insert-and-copy length code")
 		match self.meta_block.distance {
 			Some(0) => return Ok(State::DistanceCode(0)),
-			Some(_) => unreachable!(),
+			Some(_) => unreachable!(), // confirmed unreachable, code sets meta_block.distance to None|Some(0) before this portion
 			None => {}
 		}
 
@@ -1498,10 +1498,10 @@ impl<R: Read> Decompressor<R> {
 		}
 
 		let cid = match self.meta_block.copy_length {
-			Some(0...1) => unreachable!(),
+			Some(0...1) => unreachable!(), // confirmed unreachable, copy_length will always be >= 2
 			Some(c @ 2...4) => c - 2,
 			Some(_) => 3,
-			_ => unreachable!(),
+			_ => unreachable!(), // confirmed unreachable, copy_length will always be set to Some(_) at this point
 		};
 
 		let index = self.meta_block.header.c_map_d.as_ref().unwrap()[self.meta_block.btype_d as usize * 4 + cid as usize] as usize;
@@ -1573,7 +1573,7 @@ impl<R: Read> Decompressor<R> {
 
 				//distance
 			},
-			None => unreachable!()
+			None => unreachable!(), // confirmed unreachable, distance_code is always set to Some(_) at this point
 		};
 
 		// debug(&format!("(dc, db, d) = {:?}", (self.meta_block.distance_code, self.distance_buf.clone(), distance)));
