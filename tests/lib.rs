@@ -390,6 +390,18 @@ fn should_decompress_to_empty_string_frewsxcv_04() {
 	assert_eq!(Vec::<u8>::new(), input);
 }
 
+#[test]
+/// frewsxcv: fuzzer-test
+/// exposes wrong bound checks on tree lookup array bounds
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/7
+fn should_decompress_to_empty_string_frewsxcv_05() {
+	use std::io::Read;
+	use brotli::Decompressor;
+	let mut input = vec![];
+	let _ = Decompressor::new(&b"\x11\x3f\x00\x00\x24\xb0\xe2\x99\x80\x12".to_vec() as &[u8]).read_to_end(&mut input);
+
+	assert_eq!(Vec::<u8>::new(), input);
+}
 
 fn inverse_move_to_front_transform(v: &mut[u8]) {
 	let mut mtf: Vec<u8> = vec![0; 256];

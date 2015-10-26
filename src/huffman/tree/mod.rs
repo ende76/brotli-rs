@@ -32,7 +32,6 @@ pub struct Tree {
 //
 // Length of self.buf[] = 2^(codelength + 1) - 1
 //
-const MAX_INDEX: usize = 32768 - 2;
 
 impl Tree {
 	pub fn with_max_depth(max_depth: usize) -> Tree {
@@ -66,7 +65,7 @@ impl Tree {
 			};
 		}
 
-		if insert_at_index > MAX_INDEX {
+		if insert_at_index > self.buf.len() - 1 {
 			panic!("Index {:?} exceeds MAX_INDEX at insert (code = {:?})", insert_at_index, code);
 		}
 
@@ -82,7 +81,7 @@ impl Tree {
 				Err(e) => return Err(e),
 			};
 
-			if lookup_index > MAX_INDEX {
+			if lookup_index > self.buf.len() - 1 {
 				return Ok(None);
 			}
 
