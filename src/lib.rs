@@ -311,6 +311,7 @@ enum DecompressorError {
 	ExceededExpectedBytes,
 	InvalidBlockCountCode,
 	InvalidBlockSwitchCommandCode,
+	InvalidBlockTypeCode,
 	InvalidInsertAndCopyLengthCode,
 	InvalidLengthInStaticDictionary,
 	InvalidMSkipLen,
@@ -346,6 +347,7 @@ impl Error for DecompressorError {
 			DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
 			DecompressorError::InvalidBlockCountCode => "Encountered invalid value for block count code",
 			DecompressorError::InvalidBlockSwitchCommandCode => "Encountered invalid value for block switch command code",
+			DecompressorError::InvalidBlockTypeCode => "Encountered invalid value for block type code",
 			DecompressorError::InvalidInsertAndCopyLengthCode => "Encountered invalid value for insert-and-copy-length code",
 			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
 			DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
@@ -1346,7 +1348,7 @@ impl<R: Read> Decompressor<R> {
 			0 => btype_prev,
 			1 => (btype + 1) % n_bltypes,
 			2...255 => (block_type_code - 2) as u8,
-			_ => unreachable!(),
+			_ => return Err(DecompressorError::InvalidBlockTypeCode),
 		};
 
 		// debug(&format!("block type = {:?}", block_type));
