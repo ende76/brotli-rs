@@ -310,6 +310,7 @@ enum DecompressorError {
 	ExpectedEndOfStream,
 	ExceededExpectedBytes,
 	InvalidBlockCountCode,
+	InvalidBlockSwitchCommandCode,
 	InvalidInsertAndCopyLengthCode,
 	InvalidLengthInStaticDictionary,
 	InvalidMSkipLen,
@@ -344,6 +345,7 @@ impl Error for DecompressorError {
 			DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
 			DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
 			DecompressorError::InvalidBlockCountCode => "Encountered invalid value for block count code",
+			DecompressorError::InvalidBlockSwitchCommandCode => "Encountered invalid value for block switch command code",
 			DecompressorError::InvalidInsertAndCopyLengthCode => "Encountered invalid value for insert-and-copy-length code",
 			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
 			DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
@@ -1299,7 +1301,7 @@ impl<R: Read> Decompressor<R> {
 			21 => (2114, 12),
 			22 => (6210, 14),
 			23 => (22594, 24),
-			_ => unreachable!(),
+			_ => unreachable!(), // confirmed unreachable, possible value is entirely defined in code above
 		};
 
 		insert_length += match self.in_stream.read_u32_from_n_bits(extra_bits_insert) {
@@ -1320,7 +1322,7 @@ impl<R: Read> Decompressor<R> {
 			21 => (582, 9),
 			22 => (1094, 10),
 			23 => (2118, 24),
-			_ => unreachable!(),
+			_ => unreachable!(), // confirmed unreachable, possible value is entirely defined in code above
 		};
 
 		copy_length += match self.in_stream.read_u32_from_n_bits(extra_bits_insert) {
@@ -1334,7 +1336,7 @@ impl<R: Read> Decompressor<R> {
 	fn parse_block_switch_command(&mut self, prefix_tree_types: HuffmanCodes, btype: NBltypes, btype_prev: NBltypes, n_bltypes: NBltypes, prefix_tree_counts: HuffmanCodes) -> Result<BlockSwitch, DecompressorError> {
 		let block_type_code = match prefix_tree_types.lookup_symbol(&mut self.in_stream) {
 			Ok(Some(block_type_code)) => block_type_code,
-			Ok(None) => unreachable!(),
+			Ok(None) => return Err(DecompressorError::InvalidBlockSwitchCommandCode),
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
