@@ -81,7 +81,10 @@ fn uppercase_first(base_word: &[u8]) -> Vec<u8> {
 	[v, Vec::from(&base_word[i..])].concat()
 }
 
-
+/// @TODO transformation() SHOULD return a Result, for cases where a base_word is passed in
+///       for example with length 3, and OmitFirst5 is called on it.
+///       In such a case, an error should be returned, where right now, the Omit-length is
+///       being clamped to the base_word-length.
 pub fn transformation(id: usize, base_word: &[u8]) -> Vec<u8> {
 	match id {
 		  0 => Vec::from(base_word),
