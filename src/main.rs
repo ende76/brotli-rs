@@ -5,5 +5,8 @@ use brotli::Decompressor;
 
 fn main() {
 	let mut input = vec![];
-	let _ = Decompressor::new(&b"\x51\xac\x00\x48\x2f\x73\x14\x01\x14\x00\x00\x01\x00\x14\x14\xff\x00\x02\x00\x00\x00\x00\x00\x64\x14\x24\x14\x14\x14\x14\x14\x80\x00\x00\x14\xff\xff\x00\x00\x14\x14\x14\x14\x14\x14\x80\x00\x80".to_vec() as &[u8]).read_to_end(&mut input);
+	let res = Decompressor::new(std::fs::File::open("id:000012,src:000128,op:havoc,rep:4").unwrap()).read_to_end(&mut input);
+
+	println!("output length = {:?}", input.len());
+	println!("res = {:?}", res);
 }

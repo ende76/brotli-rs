@@ -1644,7 +1644,7 @@ impl<R: Read> Decompressor<R> {
 					self.header.window_size = Some((1 << wbits) - 16);
 					self.output_window = Some(RingBuffer::with_capacity(self.header.window_size.unwrap()));
 
-					// debug(&format!("(WBITS, Window Size) = {:?}", (wbits, self.header.window_size)));
+					// println!("(WBITS, Window Size) = {:?}", (wbits, self.header.window_size));
 
 					self.state = State::HeaderEnd;
 				},
@@ -1767,7 +1767,7 @@ impl<R: Read> Decompressor<R> {
 				State::MLen(m_len) => {
 					self.meta_block.header.m_len = Some(m_len);
 
-					// debug(&format!("MLEN = {:?}", m_len));
+					// println!("MLEN = {:?}", m_len);
 
 					self.state = match (&self.meta_block.header.is_last.unwrap(), &self.header.bltype_codes) {
 						(&false, _) => match self.parse_is_uncompressed() {
@@ -2134,11 +2134,18 @@ impl<R: Read> Decompressor<R> {
 					};
 				},
 				State::InsertLiterals(insert_literals) => {
+					let m_len = self.meta_block.header.m_len.unwrap() as usize;
+
 					for literal in insert_literals {
 						self.buf.push_front(literal);
 						self.output_window.as_mut().unwrap().push(literal);
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
+
+						if m_len < self.meta_block.count_output {
+
+							return Err(DecompressorError::ExceededExpectedBytes);
+						}
 					}
 
 					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
@@ -2175,6 +2182,7 @@ impl<R: Read> Decompressor<R> {
 					};
 				},
 				State::CopyLiterals(copy_literals) => {
+					let m_len = self.meta_block.header.m_len.unwrap() as usize;
 					for literal in copy_literals {
 						self.buf.push_front(literal);
 						self.literal_buf.push(literal);
@@ -2184,15 +2192,16 @@ impl<R: Read> Decompressor<R> {
 						self.output_window.as_mut().unwrap().push(literal);
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
+
+						if m_len < self.meta_block.count_output {
+
+							return Err(DecompressorError::ExceededExpectedBytes);
+						}
 					}
 
 					// debug(&format!("output = {:?}", self.buf));
 
 
-					if (self.meta_block.header.m_len.unwrap() as usize) < self.meta_block.count_output {
-
-						return Err(DecompressorError::ExceededExpectedBytes);
-					}
 
 					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
 
