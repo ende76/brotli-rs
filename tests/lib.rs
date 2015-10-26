@@ -378,42 +378,54 @@ fn should_reject_frewsxcv_03() {
 }
 
 #[test]
+#[should_panic(expected = "Code length check sum")]
 /// frewsxcv: fuzzer-test
 /// edge case for block type value, which _looks_ like a u8 but is just slightly bigger
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/6
-fn should_decompress_to_empty_string_frewsxcv_04() {
+fn should_reject_frewsxcv_04() {
 	use std::io::Read;
 	use brotli::Decompressor;
 	let mut input = vec![];
-	let _ = Decompressor::new(&b"\x1b\x3f\x00\xff\xff\xb0\xe2\x99\x80\x12".to_vec() as &[u8]).read_to_end(&mut input);
+	let result = Decompressor::new(&b"\x1b\x3f\x00\xff\xff\xb0\xe2\x99\x80\x12".to_vec() as &[u8]).read_to_end(&mut input);
 
-	assert_eq!(Vec::<u8>::new(), input);
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
 }
 
 #[test]
+#[should_panic(expected = "unexpected EOF")]
 /// frewsxcv: fuzzer-test
 /// exposes wrong bound checks on tree lookup array bounds
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/7
-fn should_decompress_to_empty_string_frewsxcv_05() {
+fn should_reject_frewsxcv_05() {
 	use std::io::Read;
 	use brotli::Decompressor;
 	let mut input = vec![];
-	let _ = Decompressor::new(&b"\x11\x3f\x00\x00\x24\xb0\xe2\x99\x80\x12".to_vec() as &[u8]).read_to_end(&mut input);
+	let result = Decompressor::new(&b"\x11\x3f\x00\x00\x24\xb0\xe2\x99\x80\x12".to_vec() as &[u8]).read_to_end(&mut input);
 
-	assert_eq!(Vec::<u8>::new(), input);
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
 }
 
 #[test]
+#[should_panic(expected="Run length")]
 /// frewsxcv: fuzzer-test
 /// exposes shift overflow if too small a type has been chosen for runlength code
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/8
-fn should_decompress_to_empty_string_frewsxcv_06() {
+fn should_reject_frewsxcv_06() {
 	use std::io::Read;
 	use brotli::Decompressor;
 	let mut input = vec![];
-	let _ = Decompressor::new(&b"\x15\x3f\x60\x00\x15\x3f\x60\x00\x27\xb0\xdb\xa8\x80\x25\x27\xb0\xdb\x40\x80\x12".to_vec() as &[u8]).read_to_end(&mut input);
+	let result = Decompressor::new(&b"\x15\x3f\x60\x00\x15\x3f\x60\x00\x27\xb0\xdb\xa8\x80\x25\x27\xb0\xdb\x40\x80\x12".to_vec() as &[u8]).read_to_end(&mut input);
 
-	assert_eq!(Vec::<u8>::new(), input);
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
 }
 
 #[test]
@@ -430,29 +442,39 @@ fn should_decompress_to_string_frewsxcv_07() {
 }
 
 #[test]
+#[should_panic(expected="unexpected EOF")]
 /// frewsxcv: fuzzer-test
 /// exposes uncaught byte value 0 in transformation code
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/10
-fn should_decompress_to_string_frewsxcv_08() {
+fn should_reject_frewsxcv_08() {
 	use std::io::Read;
 	use brotli::Decompressor;
 
 	let mut input = vec![];
-	let _ = Decompressor::new(&b"\x1b\x3f\x01\xf0\x24\xb0\xc2\xa4\x80\x54\xff\xd7\x24\xb0\x12".to_vec() as &[u8]).read_to_end(&mut input);
+	let result = Decompressor::new(&b"\x1b\x3f\x01\xf0\x24\xb0\xc2\xa4\x80\x54\xff\xd7\x24\xb0\x12".to_vec() as &[u8]).read_to_end(&mut input);
 
-	assert_eq!(vec![88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 32, 216, 131, 217, 170, 216, 135, 217, 165, 61, 39, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 32, 1, 0, 0, 0, 3, 0, 0, 0, 61, 39, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88], input);
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
 }
 
 #[test]
+#[should_panic(expected="non-positive distance")]
 /// frewsxcv: fuzzer-test
 /// exposes uncaught non-positive distances
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/10
-fn should_decompress_frewsxcv_09() {
+fn should_reject_frewsxcv_09() {
 	use std::io::Read;
 	use brotli::Decompressor;
 
 	let mut input = vec![];
-	let _ = Decompressor::new(&b"\x5b\xff\x00\x01\x40\x0a\x00\xab\x16\x7b\xac\x14\x48\x4e\x73\xed\x01\x92\x03".to_vec() as &[u8]).read_to_end(&mut input);
+	let result = Decompressor::new(&b"\x5b\xff\x00\x01\x40\x0a\x00\xab\x16\x7b\xac\x14\x48\x4e\x73\xed\x01\x92\x03".to_vec() as &[u8]).read_to_end(&mut input);
+
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
 }
 
 fn inverse_move_to_front_transform(v: &mut[u8]) {
