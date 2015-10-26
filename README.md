@@ -8,6 +8,11 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 
 ## Changelog
 
+###v0.3.12 -> v0.3.13
+----------------
+
+Fixed uncaught non-positive distances. (Thanks, [Corey](https://github.com/frewsxcv)!).
+
 ###v0.3.11 -> v0.3.12
 ----------------
 

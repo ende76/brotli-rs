@@ -443,6 +443,18 @@ fn should_decompress_to_string_frewsxcv_08() {
 	assert_eq!(vec![88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 32, 216, 131, 217, 170, 216, 135, 217, 165, 61, 39, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 32, 1, 0, 0, 0, 3, 0, 0, 0, 61, 39, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88], input);
 }
 
+#[test]
+/// frewsxcv: fuzzer-test
+/// exposes uncaught non-positive distances
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/10
+fn should_decompress_frewsxcv_09() {
+	use std::io::Read;
+	use brotli::Decompressor;
+
+	let mut input = vec![];
+	let _ = Decompressor::new(&b"\x5b\xff\x00\x01\x40\x0a\x00\xab\x16\x7b\xac\x14\x48\x4e\x73\xed\x01\x92\x03".to_vec() as &[u8]).read_to_end(&mut input);
+}
+
 fn inverse_move_to_front_transform(v: &mut[u8]) {
 	let mut mtf: Vec<u8> = vec![0; 256];
 	let v_len = v.len();

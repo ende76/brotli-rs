@@ -275,6 +275,7 @@ enum DecompressorError {
 	InvalidLengthInStaticDictionary,
 	InvalidMSkipLen,
 	InvalidTransformId,
+	InvalidNonPositiveDistance,
 	LessThanTwoNonZeroCodeLengths,
 	NoCodeLength,
 	NonZeroFillBit,
@@ -311,6 +312,7 @@ impl Error for DecompressorError {
 			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
 			DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
 			DecompressorError::InvalidTransformId => "Encountered invalid transform id in reference to static dictionary",
+			DecompressorError::InvalidNonPositiveDistance => "Encountered invalid non-positive distance",
 			DecompressorError::LessThanTwoNonZeroCodeLengths => "Encountered invalid complex prefix code with less than two non-zero codelengths",
 			DecompressorError::NoCodeLength => "Encountered invalid complex prefix code with all zero codelengths",
 			DecompressorError::NonZeroFillBit => "Enocuntered non-zero fill bit",
@@ -1483,15 +1485,19 @@ impl<R: Read> Decompressor<R> {
 			},
 			Some(d @ 4...9) => {
 				match (self.distance_buf.nth(0), 2 * (d as i64 % 2) - 1, (d - 2) >> 1) {
-					(Ok(distance), sign, d) => (*distance as i64 + (sign * d as i64)) as u32,
+					(Ok(distance), sign, d) => match *distance as i64 + (sign * d as i64) {
+						distance if distance <= 0 => return Err(DecompressorError::InvalidNonPositiveDistance),
+						distance => distance as u32
+					},
 					(Err(_), _, _) => return Err(DecompressorError::RingBufferError),
 				}
 			},
 			// reference distance_buf here, to get the decoded distance
 			Some(d @ 10...15) => {
 				match (self.distance_buf.nth(1), 2 * (d as i64 % 2) - 1, (d - 8) >> 1) {
-					(Ok(distance), sign, d) => {
-						(*distance as i64 + (sign * d as i64)) as u32
+					(Ok(distance), sign, d) => match *distance as i64 + (sign * d as i64) {
+						distance if distance <= 0 => return Err(DecompressorError::InvalidNonPositiveDistance),
+						distance => distance as u32
 					},
 					(Err(_), _, _) => return Err(DecompressorError::RingBufferError),
 				}
@@ -1533,7 +1539,7 @@ impl<R: Read> Decompressor<R> {
 			None => unreachable!(), // confirmed unreachable, distance_code is always set to Some(_) at this point
 		};
 
-		// debug(&format!("(dc, db, d) = {:?}", (self.meta_block.distance_code, self.distance_buf.clone(), distance)));
+		// println!("(dc, db, d) = {:?}", (self.meta_block.distance_code, self.distance_buf.clone(), distance));
 
 		if self.meta_block.distance_code.unwrap() > 0 && distance as usize <= cmp::min(self.header.window_size.unwrap(), self.count_output) {
 			self.distance_buf.push(distance);
