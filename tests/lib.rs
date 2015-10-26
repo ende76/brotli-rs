@@ -416,6 +416,19 @@ fn should_decompress_to_empty_string_frewsxcv_06() {
 	assert_eq!(Vec::<u8>::new(), input);
 }
 
+#[test]
+/// frewsxcv: fuzzer-test
+/// exposes arithmetic overflow in word transformation
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/9
+fn should_decompress_to_empty_string_frewsxcv_07() {
+	use std::io::Read;
+	use brotli::Decompressor;
+	let mut input = vec![];
+	let _ = Decompressor::new(&b"\x12\x1b\x00\x1e\x11\x00\x05\x09\x21\x00\x05\x04\x43\x05\xf5\x21\x1e\x11\x00\x05\xf5\x21\x00\x05\x04\x43".to_vec() as &[u8]).read_to_end(&mut input);
+
+	assert_eq!(vec![46, 103, 105, 102, 34, 32, 97, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 0, 4, 2, 0, 0, 0, 2, 4, 0, 5, 3, 7, 0, 2, 0, 0, 0], input);
+}
+
 fn inverse_move_to_front_transform(v: &mut[u8]) {
 	let mut mtf: Vec<u8> = vec![0; 256];
 	let v_len = v.len();

@@ -1,3 +1,4 @@
+use std::cmp::{ max, min };
 
 fn uppercase_all(base_word: &[u8]) -> Vec<u8> {
 	let l = base_word.len();
@@ -40,6 +41,11 @@ fn uppercase_all(base_word: &[u8]) -> Vec<u8> {
 
 fn uppercase_first(base_word: &[u8]) -> Vec<u8> {
 	let l = base_word.len();
+
+	if l == 0 {
+		return Vec::new();
+	}
+
 	let mut v = Vec::with_capacity(l);
 	let i;
 
@@ -81,7 +87,7 @@ pub fn transformation(id: usize, base_word: &[u8]) -> Vec<u8> {
 		  0 => Vec::from(base_word),
 		  1 => [Vec::from(base_word), vec![0x20]].concat(),
 		  2 => [vec![0x20], Vec::from(base_word), vec![0x20]].concat(),
-		  3 => Vec::from(&base_word[1..]),
+		  3 => Vec::from(&base_word[min(1, base_word.len() - 1)..]),
 		  4 => [uppercase_first(base_word), vec![0x20]].concat(),
 		  5 => [Vec::from(base_word), vec![0x20, 0x74, 0x68, 0x65, 0x20]].concat(),
 		  6 => [vec![0x20], Vec::from(base_word)].concat(),
@@ -89,8 +95,8 @@ pub fn transformation(id: usize, base_word: &[u8]) -> Vec<u8> {
 		  8 => [Vec::from(base_word), vec![0x20, 0x6f, 0x66, 0x20]].concat(),
 		  9 => uppercase_first(base_word),
 		 10 => [Vec::from(base_word), vec![0x20, 0x61, 0x6e, 0x64, 0x20]].concat(),
-		 11 => Vec::from(&base_word[2..]),
-		 12 => Vec::from(&base_word[0..base_word.len()-1]),
+		 11 => Vec::from(&base_word[min(2, base_word.len() - 1)..]),
+		 12 => Vec::from(&base_word[..max(1, base_word.len()) - 1]),
 		 13 => [vec![0x2c, 0x20], Vec::from(base_word), vec![0x20]].concat(),
 		 14 => [Vec::from(base_word), vec![0x2c, 0x20]].concat(),
 		 15 => [vec![0x20], uppercase_first(base_word), vec![0x20]].concat(),
@@ -101,48 +107,48 @@ pub fn transformation(id: usize, base_word: &[u8]) -> Vec<u8> {
 		 20 => [Vec::from(base_word), vec![0x2e]].concat(),
 		 21 => [Vec::from(base_word), vec![0x22, 0x3e]].concat(),
 		 22 => [Vec::from(base_word), vec![0x0a]].concat(),
-		 23 => Vec::from(&base_word[0..base_word.len() - 3]),
+		 23 => Vec::from(&base_word[..max(3, base_word.len()) - 3]),
 		 24 => [Vec::from(base_word), vec![0x5d]].concat(),
 		 25 => [Vec::from(base_word), vec![0x20, 0x66, 0x6f, 0x72, 0x20]].concat(),
-		 26 => Vec::from(&base_word[3..]),
-		 27 => Vec::from(&base_word[0..base_word.len() - 2]),
+		 26 => Vec::from(&base_word[min(3, base_word.len() - 1)..]),
+		 27 => Vec::from(&base_word[..max(2, base_word.len()) - 2]),
 		 28 => [Vec::from(base_word), vec![0x20, 0x61, 0x20]].concat(),
 		 29 => [Vec::from(base_word), vec![0x20, 0x74, 0x68, 0x61, 0x74, 0x20]].concat(),
 		 30 => [vec![0x20], uppercase_first(base_word)].concat(),
 		 31 => [Vec::from(base_word), vec![0x2e, 0x20]].concat(),
 		 32 => [vec![0x2e], Vec::from(base_word)].concat(),
 		 33 => [vec![0x20], Vec::from(base_word), vec![0x2c, 0x20]].concat(),
-		 34 => Vec::from(&base_word[4..]),
+		 34 => Vec::from(&base_word[min(4, base_word.len() - 1)..]),
 		 35 => [Vec::from(base_word), vec![0x20, 0x77, 0x69, 0x74, 0x68, 0x20]].concat(),
 		 36 => [Vec::from(base_word), vec![0x27]].concat(),
 		 37 => [Vec::from(base_word), vec![0x20, 0x66, 0x72, 0x6f, 0x6d, 0x20]].concat(),
 		 38 => [Vec::from(base_word), vec![0x20, 0x62, 0x79, 0x20]].concat(),
-		 39 => Vec::from(&base_word[5..]),
-		 40 => Vec::from(&base_word[6..]),
+		 39 => Vec::from(&base_word[min(5, base_word.len() - 1)..]),
+		 40 => Vec::from(&base_word[min(6, base_word.len() - 1)..]),
 		 41 => [vec![0x20, 0x74, 0x68, 0x65, 0x20], Vec::from(base_word)].concat(),
-		 42 => Vec::from(&base_word[0..base_word.len() - 4]),
+		 42 => Vec::from(&base_word[..max(4, base_word.len()) - 4]),
 		 43 => [Vec::from(base_word), vec![0x2e, 0x20, 0x54, 0x68, 0x65, 0x20]].concat(),
 		 44 => uppercase_all(base_word),
 		 45 => [Vec::from(base_word), vec![0x20, 0x6f, 0x6e, 0x20]].concat(),
 		 46 => [Vec::from(base_word), vec![0x20, 0x61, 0x73, 0x20]].concat(),
 		 47 => [Vec::from(base_word), vec![0x20, 0x69, 0x73, 0x20]].concat(),
-		 48 => Vec::from(&base_word[0..base_word.len() - 7]),
-		 49 => [Vec::from(&base_word[0..base_word.len() - 1]), vec![0x69, 0x6e, 0x67, 0x20]].concat(),
+		 48 => Vec::from(&base_word[..max(7, base_word.len()) - 7]),
+		 49 => [Vec::from(&base_word[..max(1, base_word.len()) - 1]), vec![0x69, 0x6e, 0x67, 0x20]].concat(),
 		 50 => [Vec::from(base_word), vec![0x0a, 0x09]].concat(),
 		 51 => [Vec::from(base_word), vec![0x3a]].concat(),
 		 52 => [vec![0x20], Vec::from(base_word), vec![0x2e, 0x20]].concat(),
 		 53 => [Vec::from(base_word), vec![0x65, 0x64, 0x20]].concat(),
-		 54 => Vec::from(&base_word[9..]),
-		 55 => Vec::from(&base_word[7..]),
-		 56 => Vec::from(&base_word[..base_word.len() - 6]),
+		 54 => Vec::from(&base_word[min(9, base_word.len() - 1)..]),
+		 55 => Vec::from(&base_word[min(7, base_word.len() - 1)..]),
+		 56 => Vec::from(&base_word[..max(6, base_word.len()) - 6]),
 		 57 => [Vec::from(base_word), vec![0x28]].concat(),
 		 58 => [uppercase_first(base_word), vec![0x2c, 0x20]].concat(),
-		 59 => Vec::from(&base_word[..base_word.len() - 8]),
+		 59 => Vec::from(&base_word[..max(8, base_word.len()) - 8]),
 		 60 => [Vec::from(base_word), vec![0x20, 0x61, 0x74, 0x20]].concat(),
 		 61 => [Vec::from(base_word), vec![0x6c, 0x79, 0x20]].concat(),
 		 62 => [vec![0x20, 0x74, 0x68, 0x65, 0x20], Vec::from(base_word), vec![0x20, 0x6f, 0x66, 0x20]].concat(),
-		 63 => Vec::from(&base_word[..base_word.len() - 5]),
-		 64 => Vec::from(&base_word[..base_word.len() - 9]),
+		 63 => Vec::from(&base_word[..max(5, base_word.len()) - 5]),
+		 64 => Vec::from(&base_word[..max(base_word.len(), 9) - 9]),
 		 65 => [vec![0x20], uppercase_first(base_word), vec![0x2c, 0x20]].concat(),
 		 66 => [uppercase_first(base_word), vec![0x22]].concat(),
 		 67 => [vec![0x2e], Vec::from(base_word), vec![0x28]].concat(),
