@@ -1,12 +1,35 @@
 extern crate brotli;
 
+use std::io;
 use std::io::Read;
 use brotli::Decompressor;
+use std::fs;
+use std::path::Path;
+
+fn visit_dirs(dir: &Path) -> io::Result<()> {
+    if try!(fs::metadata(dir)).is_dir() {
+        for entry in try!(fs::read_dir(dir)) {
+            let entry = try!(entry);
+            if try!(fs::metadata(entry.path())).is_dir() {
+                ;
+            } else {
+            	if entry.file_name().to_str().unwrap().starts_with("id") {
+            		println!("{:?}:", &entry.path());
+            		let mut input = Vec::new();
+					let res = Decompressor::new(std::fs::File::open(&entry.path()).unwrap()).read_to_end(&mut input);
+
+					println!("output length = {:?}", input.len());
+					println!("res = {:?}\n===========\n", res);
+            	}
+
+            }
+        }
+    }
+    Ok(())
+}
 
 fn main() {
-	let mut input = vec![];
-	let res = Decompressor::new(std::fs::File::open("id:000012,src:000128,op:havoc,rep:4").unwrap()).read_to_end(&mut input);
 
-	println!("output length = {:?}", input.len());
-	println!("res = {:?}", res);
+	let _ = visit_dirs(Path::new("afl-findings/crashes"));
+	let _ = visit_dirs(Path::new("afl-findings/hangs"));
 }
