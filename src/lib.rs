@@ -626,6 +626,7 @@ impl<R: Read> Decompressor<R> {
 	fn parse_simple_prefix_code(&mut self, alphabet_size: usize) -> Result<HuffmanCodes, DecompressorError> {
 		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
 
+		// println!("Alphabet Size = {:?}", alphabet_size);
 		// debug(&format!("Bit Width = {:?}", bit_width));
 
 		let n_sym = match self.in_stream.read_u8_from_n_bits(2) {
@@ -644,7 +645,7 @@ impl<R: Read> Decompressor<R> {
 			}
 		}
 
-		// debug(&format!("Symbols = {:?}", symbols));
+		// println!("Symbols = {:?}", symbols);
 
 		let tree_select = match n_sym {
 			4 => match self.in_stream.read_bit() {
@@ -737,7 +738,7 @@ impl<R: Read> Decompressor<R> {
 			return Err(DecompressorError::NoCodeLength);
 		}
 
-		// debug(&format!("Code Lengths = {:?}", code_lengths));
+		// println!("Code Lengths = {:?}", code_lengths);
 		// debug(&format!("Symbols = {:?}", symbols));
 
 		code_lengths = vec![code_lengths[4], code_lengths[0], code_lengths[1], code_lengths[2], code_lengths[3], code_lengths[5], code_lengths[7], code_lengths[9], code_lengths[10], code_lengths[11], code_lengths[12], code_lengths[13], code_lengths[14], code_lengths[15], code_lengths[16], code_lengths[17], code_lengths[8], code_lengths[6]];
@@ -1079,7 +1080,10 @@ impl<R: Read> Decompressor<R> {
 	fn parse_prefix_codes_distances(&mut self) -> Result<State, DecompressorError> {
 		let n_trees_d = self.meta_block.header.n_trees_d.unwrap() as usize;
 		let mut prefix_codes = Vec::with_capacity(n_trees_d);
-		let alphabet_size = (16 + self.meta_block.header.n_direct.unwrap() as usize + 48) << self.meta_block.header.n_postfix.unwrap() as usize;
+		let alphabet_size = 16 + self.meta_block.header.n_direct.unwrap() as usize + (48 << self.meta_block.header.n_postfix.unwrap());
+
+		// println!("NDIRECT = {:?}", self.meta_block.header.n_direct.unwrap());
+		// println!("NPOSTFIX = {:?}", self.meta_block.header.n_postfix.unwrap());
 
 		for _ in 0..n_trees_d {
 			prefix_codes.push(match self.parse_prefix_code(alphabet_size) {
@@ -1790,7 +1794,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsUncompressed(true) => {
 					self.meta_block.header.is_uncompressed = Some(true);
 
-					// debug(&format!("UNCOMPRESSED = true"));
+					// println!("UNCOMPRESSED = true");
 
 					match self.in_stream.read_u8_from_byte_tail() {
 						Ok(0) => {},
@@ -1816,7 +1820,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsUncompressed(false) => {
 					self.meta_block.header.is_uncompressed = Some(false);
 
-					// debug(&format!("UNCOMPRESSED = false"));
+					// println!("UNCOMPRESSED = false");
 
 					self.state = match self.header.bltype_codes {
 						None => match Self::create_block_type_codes() {
@@ -1840,7 +1844,7 @@ impl<R: Read> Decompressor<R> {
 				State::NBltypesL(n_bltypes_l) => {
 					self.meta_block.header.n_bltypes_l = Some(n_bltypes_l);
 
-					// debug(&format!("NBLTYPESL = {:?}", n_bltypes_l));
+					// println!("NBLTYPESL = {:?}", n_bltypes_l);
 
 					self.state = if n_bltypes_l >= 2 {
 						match self.parse_prefix_code_block_types_literals() {
@@ -1857,7 +1861,6 @@ impl<R: Read> Decompressor<R> {
 				State::PrefixCodeBlockTypesLiterals(prefix_tree) => {
 					self.meta_block.prefix_tree_block_types_literals = Some(prefix_tree);
 
-					// debug(&format!("Prefix Code Block Types Literals = {:?}", self.meta_block.header.prefix_code_block_types_literals));
 					// debug(&format!("Prefix Tree Block Types Literals = {:?}", self.meta_block.prefix_tree_block_types_literals));
 
 					self.state = match self.parse_prefix_code_block_counts_literals() {
@@ -1868,7 +1871,6 @@ impl<R: Read> Decompressor<R> {
 				State::PrefixCodeBlockCountsLiterals(prefix_tree) => {
 					self.meta_block.prefix_tree_block_counts_literals = Some(prefix_tree);
 
-					// debug(&format!("Prefix Code Block Counts Literals = {:?}", self.meta_block.header.prefix_code_block_counts_literals));
 					// debug(&format!("Prefix Tree Block Counts Literals = {:?}", self.meta_block.prefix_tree_block_counts_literals));
 
 					self.state = match self.parse_first_block_count_literals() {
@@ -1889,7 +1891,7 @@ impl<R: Read> Decompressor<R> {
 				State::NBltypesI(n_bltypes_i) => {
 					self.meta_block.header.n_bltypes_i = Some(n_bltypes_i);
 
-					// debug(&format!("NBLTYPESI = {:?}", n_bltypes_i));
+					// println!("NBLTYPESI = {:?}", n_bltypes_i);
 
 					self.state = if n_bltypes_i >= 2 {
 						match self.parse_prefix_code_block_types_insert_and_copy_lengths() {
@@ -1906,7 +1908,6 @@ impl<R: Read> Decompressor<R> {
 				State::PrefixCodeBlockTypesInsertAndCopyLengths(prefix_tree) => {
 					self.meta_block.prefix_tree_block_types_insert_and_copy_lengths = Some(prefix_tree);
 
-					// debug(&format!("Prefix Code Block Types Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_block_types_insert_and_copy_lengths));
 					// debug(&format!("Prefix Tree Block Types Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_block_types_insert_and_copy_lengths));
 
 					self.state = match self.parse_prefix_code_block_counts_insert_and_copy_lengths() {
@@ -1917,7 +1918,6 @@ impl<R: Read> Decompressor<R> {
 				State::PrefixCodeBlockCountsInsertAndCopyLengths(prefix_tree) => {
 					self.meta_block.prefix_tree_block_counts_insert_and_copy_lengths = Some(prefix_tree);
 
-					// debug(&format!("Prefix Code Block Counts Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_code_block_counts_insert_and_copy_lengths));
 					// debug(&format!("Prefix Tree Block Counts Insert And Copy Lengths = {:?}", self.meta_block.prefix_tree_block_counts_insert_and_copy_lengths));
 
 					self.state = match self.parse_first_block_count_insert_and_copy_lengths() {
@@ -1938,7 +1938,7 @@ impl<R: Read> Decompressor<R> {
 				State::NBltypesD(n_bltypes_d) => {
 					self.meta_block.header.n_bltypes_d = Some(n_bltypes_d);
 
-					// debug(&format!("NBLTYPESD = {:?}", n_bltypes_d));
+					// println!("NBLTYPESD = {:?}", n_bltypes_d);
 
 					self.state = if n_bltypes_d >= 2 {
 						match self.parse_prefix_code_block_types_distances() {
@@ -1955,7 +1955,6 @@ impl<R: Read> Decompressor<R> {
 				State::PrefixCodeBlockTypesDistances(prefix_tree) => {
 					self.meta_block.prefix_tree_block_types_distances = Some(prefix_tree);
 
-					// debug(&format!("Prefix Code Block Types Distances = {:?}", self.meta_block.header.prefix_code_block_types_distances));
 					// debug(&format!("Prefix Tree Block Types Distances = {:?}", self.meta_block.prefix_tree_block_types_distances));
 
 					self.state = match self.parse_prefix_code_block_counts_distances() {
@@ -1966,7 +1965,6 @@ impl<R: Read> Decompressor<R> {
 				State::PrefixCodeBlockCountsDistances(prefix_tree) => {
 					self.meta_block.prefix_tree_block_counts_distances = Some(prefix_tree);
 
-					// debug(&format!("Prefix Code Block Counts Distances = {:?}", self.meta_block.header.prefix_code_block_counts_distances));
 					// debug(&format!("Prefix Tree Block Counts Distances = {:?}", self.meta_block.prefix_tree_block_counts_distances));
 
 					self.state = match self.parse_first_block_count_distances() {
@@ -2007,7 +2005,7 @@ impl<R: Read> Decompressor<R> {
 				State::ContextModesLiterals(context_modes) => {
 					self.meta_block.context_modes_literals = Some(context_modes);
 
-					// debug(&format!("Context Modes Literals = {:?}", self.meta_block.context_modes_literals));
+					// println!("Context Modes Literals = {:?}", self.meta_block.context_modes_literals);
 
 					self.state = match self.parse_n_trees_l() {
 						Ok(state) => state,
@@ -2018,7 +2016,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.n_trees_l = Some(n_trees_l);
 					self.meta_block.header.c_map_l = Some(vec![0; 64 * self.meta_block.header.n_bltypes_l.unwrap() as usize]);
 
-					// debug(&format!("NTREESL = {:?}", n_trees_l));
+					// println!("NTREESL = {:?}", n_trees_l);
 
 					self.state = if n_trees_l >= 2 {
 						match self.parse_context_map_literals() {
@@ -2035,7 +2033,7 @@ impl<R: Read> Decompressor<R> {
 				State::ContextMapLiterals(c_map_l) => {
 					self.meta_block.header.c_map_l = Some(c_map_l);
 
-					// debug(&format!("CMAPL = {:?}", self.meta_block.header.c_map_l));
+					// println!("CMAPL = {:?}", self.meta_block.header.c_map_l);
 
 					self.state = match self.parse_n_trees_d() {
 						Ok(state) => state,
@@ -2046,7 +2044,7 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.n_trees_d = Some(n_trees_d);
 					self.meta_block.header.c_map_d = Some(vec![0; 4 * self.meta_block.header.n_bltypes_d.unwrap() as usize]);
 
-					// debug(&format!("NTREESD = {:?}", n_trees_d));
+					// println!("NTREESD = {:?}", n_trees_d);
 
 					self.state = if n_trees_d >= 2 {
 						match self.parse_context_map_distances() {
@@ -2073,7 +2071,6 @@ impl<R: Read> Decompressor<R> {
 				State::PrefixCodesLiterals(prefix_trees) => {
 					self.meta_block.prefix_trees_literals = Some(prefix_trees);
 
-					// debug(&format!("Prefix Codes Literals = {:?}", self.meta_block.header.prefix_codes_literals));
 					// debug(&format!("Prefix Trees Literals = {:?}", self.meta_block.prefix_trees_literals));
 
 					self.state = match self.parse_prefix_codes_insert_and_copy_lengths() {
@@ -2084,7 +2081,6 @@ impl<R: Read> Decompressor<R> {
 				State::PrefixCodesInsertAndCopyLengths(prefix_trees) => {
 					self.meta_block.prefix_trees_insert_and_copy_lengths = Some(prefix_trees);
 
-					// println!("Prefix Codes Insert And Copy Lengths = {:?}", self.meta_block.header.prefix_codes_insert_and_copy_lengths);
 					// println!("Prefix Trees Insert And Copy Lengths = {:?}", self.meta_block.prefix_trees_insert_and_copy_lengths);
 
 					self.state = match self.parse_prefix_codes_distances() {
@@ -2095,7 +2091,6 @@ impl<R: Read> Decompressor<R> {
 				State::PrefixCodesDistances(prefix_trees) => {
 					self.meta_block.prefix_trees_distances = Some(prefix_trees);
 
-					// debug(&format!("Prefix Codes Distances = {:?}", self.meta_block.header.prefix_codes_distances));
 					// debug(&format!("Prefix Trees Distances = {:?}", self.meta_block.prefix_trees_distances));
 
 					self.state = State::DataMetaBlockBegin;
@@ -2129,7 +2124,7 @@ impl<R: Read> Decompressor<R> {
 						},
 					};
 
-					// debug(&format!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length));
+					// println!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length);
 
 					self.state = match self.parse_insert_literals() {
 						Ok(state) => state,
@@ -2139,9 +2134,11 @@ impl<R: Read> Decompressor<R> {
 				State::InsertLiterals(insert_literals) => {
 					let m_len = self.meta_block.header.m_len.unwrap() as usize;
 
-					for literal in insert_literals {
-						self.buf.push_front(literal);
-						self.output_window.as_mut().unwrap().push(literal);
+					// println!("MLEN = {:?}", m_len);
+
+					for literal in &insert_literals {
+						self.buf.push_front(*literal);
+						self.output_window.as_mut().unwrap().push(*literal);
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
 

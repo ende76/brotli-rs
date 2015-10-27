@@ -8,6 +8,11 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 
 ## Changelog
 
+###v0.3.15 -> v0.3.16
+----------------
+
+Fixed incorrect calculation of alphabet size for distance code.
+
 ###v0.3.14 -> v0.3.15
 ----------------
 

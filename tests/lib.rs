@@ -432,13 +432,13 @@ fn should_reject_frewsxcv_06() {
 /// frewsxcv: fuzzer-test
 /// exposes arithmetic overflow in word transformation
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/9
-fn should_decompress_to_string_frewsxcv_07() {
+fn should_reject_frewsxcv_07() {
 	use std::io::Read;
 	use brotli::Decompressor;
 	let mut input = vec![];
 	let _ = Decompressor::new(&b"\x12\x1b\x00\x1e\x11\x00\x05\x09\x21\x00\x05\x04\x43\x05\xf5\x21\x1e\x11\x00\x05\xf5\x21\x00\x05\x04\x43".to_vec() as &[u8]).read_to_end(&mut input);
 
-	assert_eq!(vec![46, 103, 105, 102, 34, 32, 97, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 116, 61, 34, 108, 0, 4, 2, 0, 0, 0, 2, 4, 0, 5, 3, 7, 0, 2, 0, 0, 0], input);
+	assert_eq!(vec![67, 111, 112, 121, 114, 105, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 0, 4, 2, 0, 0, 0, 2, 4, 0, 5, 3, 7, 0, 2, 0, 0, 0], input);
 }
 
 #[test]
@@ -493,6 +493,25 @@ fn should_reject_frewsxcv_10() {
 		Err(e) => panic!("{:?}", e),
 		_ => {},
 	}
+}
+
+#[test]
+#[should_panic(expected="invalid symbol")]
+/// frewsxcv: fuzzer-test
+/// exposes uncaught invalid block type in block switch command
+/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/10
+fn should_reject_afl_00() {
+	use std::io::Read;
+	use brotli::Decompressor;
+
+	let mut input = vec![];
+	let result = Decompressor::new(&b"\x01\xe6\x00\x76\x42\x10\x01\x1c\x24\x24\x3c\xd7\xd7\xd7\x01\x1c".to_vec() as &[u8]).read_to_end(&mut input);
+
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
+
 }
 
 fn inverse_move_to_front_transform(v: &mut[u8]) {
