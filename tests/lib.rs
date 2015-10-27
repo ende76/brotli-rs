@@ -307,7 +307,7 @@ fn should_decompress_alice29_txt() {
 }
 
 #[test]
-#[should_panic(expected = "Error parsing code lengths")]
+#[should_panic(expected = "Code length check sum")]
 /// frewsxcv_00: fuzzer-test
 /// exposes endless-loop vulnerability, if runlength code lengths are not bounded by alphabet size
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/2
@@ -429,16 +429,20 @@ fn should_reject_frewsxcv_06() {
 }
 
 #[test]
+#[should_panic(expected="Code length check sum")]
 /// frewsxcv: fuzzer-test
-/// exposes arithmetic overflow in word transformation
+/// exposes case where runlength checksum does not add up to 32
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/9
 fn should_reject_frewsxcv_07() {
 	use std::io::Read;
 	use brotli::Decompressor;
 	let mut input = vec![];
-	let _ = Decompressor::new(&b"\x12\x1b\x00\x1e\x11\x00\x05\x09\x21\x00\x05\x04\x43\x05\xf5\x21\x1e\x11\x00\x05\xf5\x21\x00\x05\x04\x43".to_vec() as &[u8]).read_to_end(&mut input);
+	let result = Decompressor::new(&b"\x12\x1b\x00\x1e\x11\x00\x05\x09\x21\x00\x05\x04\x43\x05\xf5\x21\x1e\x11\x00\x05\xf5\x21\x00\x05\x04\x43".to_vec() as &[u8]).read_to_end(&mut input);
 
-	assert_eq!(vec![67, 111, 112, 121, 114, 105, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 103, 104, 116, 32, 0, 4, 2, 0, 0, 0, 2, 4, 0, 5, 3, 7, 0, 2, 0, 0, 0], input);
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
 }
 
 #[test]

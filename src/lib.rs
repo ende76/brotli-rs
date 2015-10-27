@@ -674,6 +674,9 @@ impl<R: Read> Decompressor<R> {
 	fn parse_complex_prefix_code(&mut self, h_skip: u8, alphabet_size: usize)
 			-> Result<HuffmanCodes, DecompressorError> {
 		let mut symbols = vec![1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+		// @TODO have bit_lengths_code as a constant,
+		//       or generate it at most once when instantiating
+		//       the Decompressor
 		let bit_lengths_code = {
 			let bit_lengths_patterns = vec![
 				vec![false, false],
@@ -723,12 +726,18 @@ impl<R: Read> Decompressor<R> {
 			}
 		}
 
-		if code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().is_empty() {
+		let len_non_zero_codelengths = code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len();
+
+		if len_non_zero_codelengths == 0 {
 			return Err(DecompressorError::NoCodeLength);
 		}
 
+		if len_non_zero_codelengths >= 2 && sum < 32 {
+			return Err(DecompressorError::CodeLengthsChecksum);
+		}
+
 		// println!("Code Lengths = {:?}", code_lengths);
-		// debug(&format!("Symbols = {:?}", symbols));
+		// println!("Symbols = {:?}", symbols);
 
 		code_lengths = vec![code_lengths[4], code_lengths[0], code_lengths[1], code_lengths[2], code_lengths[3], code_lengths[5], code_lengths[7], code_lengths[9], code_lengths[10], code_lengths[11], code_lengths[12], code_lengths[13], code_lengths[14], code_lengths[15], code_lengths[16], code_lengths[17], code_lengths[8], code_lengths[6]];
 		symbols = (0..18).collect::<Vec<_>>();
@@ -748,12 +757,13 @@ impl<R: Read> Decompressor<R> {
 			}
 		};
 
-		// debug(&format!("Code Lengths = {:?}", code_lengths));
+		// println!("Code Lengths = {:?}", code_lengths);
 		// debug(&format!("Symbols = {:?}", symbols));
 
 		let prefix_code_code_lengths = huffman::codes_from_lengths_and_symbols(&code_lengths, &symbols);
 
-		// debug(&format!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths));
+		// println!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths);
+		// println!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths.buf.iter().enumerate().filter(|&(_, l)| *l != None).collect::<Vec<_>>());
 
 		let mut actual_code_lengths = Vec::new();
 		let mut sum = 0usize;
@@ -762,6 +772,8 @@ impl<R: Read> Decompressor<R> {
 		let mut last_non_zero_codelength = 8;
 
 		loop {
+			// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
+			// println!("Lone Symbol = {:?}", lone_symbol);
 
 			let code_length_code = if lone_symbol == None {
 				match prefix_code_code_lengths.lookup_symbol(&mut self.in_stream) {
@@ -772,7 +784,7 @@ impl<R: Read> Decompressor<R> {
 
 			// debug(&format!("lone_symbol = {:?}", lone_symbol));
 
-			// debug(&format!("code length code = {:?}", code_length_code));
+			// println!("code length code = {:?}", code_length_code);
 
 			match code_length_code {
 				Some(new_code_length @ 0...15) => {

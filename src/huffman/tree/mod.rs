@@ -76,8 +76,14 @@ impl Tree {
 		let mut lookup_index = 0;
 		loop {
 			lookup_index = match r.read_bit() {
-				Ok(true) => Self::right(lookup_index),
-				Ok(false) => Self::left(lookup_index),
+				Ok(true) => {
+					// println!("true, right");
+					Self::right(lookup_index)
+				},
+				Ok(false) => {
+					// println!("false, left");
+					Self::left(lookup_index)
+				},
 				Err(e) => return Err(e),
 			};
 
