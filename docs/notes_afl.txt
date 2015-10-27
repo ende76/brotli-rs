@@ -1,0 +1,8 @@
+Create RAM disk for afl to write on, to avoid pummeling the SSD
+(see http://www.cipherdyne.org/blog/2014/12/ram-disks-and-saving-your-ssd-from-afl-fuzzing.html )
+
+# mkdir /tmp/afl-ramdisk && chmod 777 /tmp/afl-ramdisk
+# mount -t tmpfs -o size=512M tmpfs /tmp/afl-ramdisk
+$ mv fwknop.git /tmp/afl-ramdisk
+$ cd /tmp/afl-ramdisk/fwknop.git/test/afl/
+$ ./fuzzing-wrappers/server-digest-cache.sh

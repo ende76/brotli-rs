@@ -1,0 +1,29 @@
+Analysis of frewsxcv.compressed:
+0x4f 0x17 0x2b 0xf8
+
+Brotli Stream Header
+====================
+0x4f = 0100 1111
+
+1111                # WBITS => decodes to 24
+                    # window size = 1 << WBITS - 16
+
+Brotli Meta-Block Header
+========================
+[0100]
+
+0                   # ISLAST => false
+10                  # MNIBBLES => 6
+
+0x17 0x2b 0xf8 = 0001 0111 0010 1011 1111 1000 [0]
+
+0010 1110 0101 0111 1111 0000 =
+
+0x2e 0x57 0xf0
+           # MLEN - 1 = 3037168 => MLEN = 3037169
+
+[0]
+
+0                   # ISUNCOMPRESSED => false
+
+[end of stream]

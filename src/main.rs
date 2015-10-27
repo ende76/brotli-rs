@@ -30,6 +30,8 @@ fn visit_dirs(dir: &Path) -> io::Result<()> {
 
 fn main() {
 
-	let _ = visit_dirs(Path::new("afl-findings/crashes"));
-	let _ = visit_dirs(Path::new("afl-findings/hangs"));
+	for i in 1..5 {
+		let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/crashes", i)));
+		let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/hangs", i)));
+	}
 }
