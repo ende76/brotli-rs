@@ -699,6 +699,7 @@ impl<R: Read> Decompressor<R> {
 
 		let mut code_lengths = vec![0; symbols.len()];
 		let mut sum = 0usize;
+		let mut len_non_zero_codelengths = 0usize;
 
 		for i in (h_skip as usize)..symbols.len() {
 
@@ -711,6 +712,7 @@ impl<R: Read> Decompressor<R> {
 			if code_lengths[i] > 0 {
 
 				sum += 32 >> code_lengths[i];
+				len_non_zero_codelengths += 1;
 
 				// debug(&format!("code length = {:?}", code_lengths[i]));
 				// debug(&format!("32 >> code length = {:?}", 32 >> code_lengths[i]));
@@ -725,8 +727,6 @@ impl<R: Read> Decompressor<R> {
 				}
 			}
 		}
-
-		let len_non_zero_codelengths = code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len();
 
 		if len_non_zero_codelengths == 0 {
 			return Err(DecompressorError::NoCodeLength);
