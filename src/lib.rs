@@ -32,20 +32,6 @@ use std::fmt::{ Display, Formatter };
 use std::io;
 use std::io::Read;
 
-// #[derive(Debug, Clone, PartialEq)]
-// enum LogLevel {
-// 	None,
-// 	Debug,
-// }
-// const LOG_LEVEL: LogLevel = LogLevel::None;
-
-// fn debug(msg: &str) {
-// 	if LOG_LEVEL == LogLevel::Debug {
-
-// 		println!("{}", msg);
-// 	}
-// }
-
 type WBits = u8;
 type CodeLengths = Vec<usize>;
 type HuffmanCodes = Tree;
@@ -627,14 +613,15 @@ impl<R: Read> Decompressor<R> {
 		let bit_width = 16 - (alphabet_size as u16 - 1).leading_zeros() as usize;
 
 		// println!("Alphabet Size = {:?}", alphabet_size);
-		// debug(&format!("Bit Width = {:?}", bit_width));
+		// println!("Bit Width = {:?}", bit_width);
 
 		let n_sym = match self.in_stream.read_u8_from_n_bits(2) {
 			Ok(my_u8) => (my_u8 + 1) as usize,
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		// debug(&format!("NSYM = {:?}", n_sym));
+		// println!("NSYM = {:?}", n_sym);
+		// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
 
 		let mut symbols = vec![0; n_sym];
 		for symbol in &mut symbols {
@@ -646,6 +633,8 @@ impl<R: Read> Decompressor<R> {
 		}
 
 		// println!("Symbols = {:?}", symbols);
+		// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
+
 
 		let tree_select = match n_sym {
 			4 => match self.in_stream.read_bit() {
@@ -2117,12 +2106,19 @@ impl<R: Read> Decompressor<R> {
 					};
 				},
 				State::InsertLengthAndCopyLength(insert_length_and_copy_length) => {
+					let m_len = self.meta_block.header.m_len.unwrap() as usize;
+
 					match insert_length_and_copy_length {
 						(in_len, co_len) => {
 							self.meta_block.insert_length = Some(in_len);
 							self.meta_block.copy_length = Some(co_len);
 						},
 					};
+
+					if m_len < self.meta_block.count_output + self.meta_block.insert_length.unwrap() as usize + self.meta_block.copy_length.unwrap() as usize {
+
+						return Err(DecompressorError::ExceededExpectedBytes);
+					}
 
 					// println!("Insert Length and Copy Length = {:?}", insert_length_and_copy_length);
 
