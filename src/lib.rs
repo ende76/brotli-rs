@@ -275,6 +275,7 @@ enum DecompressorError {
 	InvalidInsertAndCopyLengthCode,
 	InvalidLengthInStaticDictionary,
 	InvalidMSkipLen,
+	InvalidSymbol,
 	InvalidTransformId,
 	InvalidNonPositiveDistance,
 	LessThanTwoNonZeroCodeLengths,
@@ -313,6 +314,7 @@ impl Error for DecompressorError {
 			DecompressorError::InvalidInsertAndCopyLengthCode => "Encountered invalid value for insert-and-copy-length code",
 			DecompressorError::InvalidLengthInStaticDictionary => "Encountered invalid length in reference to static dictionary",
 			DecompressorError::InvalidMSkipLen => "Most significant byte of MSKIPLEN was zero",
+			DecompressorError::InvalidSymbol => "Encountered invalid symbol in prefix code",
 			DecompressorError::InvalidTransformId => "Encountered invalid transform id in reference to static dictionary",
 			DecompressorError::InvalidNonPositiveDistance => "Encountered invalid non-positive distance",
 			DecompressorError::LessThanTwoNonZeroCodeLengths => "Encountered invalid complex prefix code with less than two non-zero codelengths",
@@ -636,7 +638,8 @@ impl<R: Read> Decompressor<R> {
 		let mut symbols = vec![0; n_sym];
 		for symbol in &mut symbols {
 			*symbol = match self.in_stream.read_u16_from_n_bits(bit_width) {
-				Ok(my_u8) => my_u8,
+				Ok(symbol) if (symbol as usize) < alphabet_size => symbol,
+				Ok(_) => return Err(DecompressorError::InvalidSymbol),
 				Err(_) => return Err(DecompressorError::UnexpectedEOF),
 			}
 		}

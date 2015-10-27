@@ -1,6 +1,6 @@
 [package]
 name = "brotli"
-version = "0.3.14"
+version = "0.3.15"
 authors = ["Thomas Pickert <ende.mail@web.de>"]
 license = "Apache-2.0"
 repository = "https://github.com/ende76/brotli-rs"

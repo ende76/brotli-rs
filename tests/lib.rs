@@ -343,7 +343,7 @@ fn should_reject_frewsxcv_01() {
 }
 
 #[test]
-#[should_panic(expected = "invalid value for insert-and-copy-length code")]
+#[should_panic(expected = "invalid symbol")]
 /// frewsxcv: fuzzer-test
 /// exposes panic in "unreachable" branch in insert-and-copy-length decoding
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/4
@@ -478,7 +478,7 @@ fn should_reject_frewsxcv_09() {
 }
 
 #[test]
-#[should_panic(expected="invalid value for block type")]
+#[should_panic(expected="invalid symbol")]
 /// frewsxcv: fuzzer-test
 /// exposes uncaught invalid block type in block switch command
 /// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/10

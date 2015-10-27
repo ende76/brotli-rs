@@ -8,6 +8,11 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 
 ## Changelog
 
+###v0.3.14 -> v0.3.15
+----------------
+
+Fixed injection of invalid symbols in simple prefix code.
+
 ###v0.3.13 -> v0.3.14
 ----------------
 

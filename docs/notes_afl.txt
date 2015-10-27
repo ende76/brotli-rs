@@ -6,3 +6,15 @@ Create RAM disk for afl to write on, to avoid pummeling the SSD
 $ mv fwknop.git /tmp/afl-ramdisk
 $ cd /tmp/afl-ramdisk/fwknop.git/test/afl/
 $ ./fuzzing-wrappers/server-digest-cache.sh
+
+Start parallel fuzzers in master/slave configuration:
+
+Master:
+
+afl-fuzz -i - -o afl-findings -M fuzzer01 -t 500 -m 250 ./target/release/main
+
+Slaves:
+
+afl-fuzz -i - -o afl-findings -S fuzzer02 -t 500 -m 250 target/release/main
+afl-fuzz -i - -o afl-findings -S fuzzer03 -t 500 -m 250 target/release/main
+afl-fuzz -i - -o afl-findings -S fuzzer04 -t 500 -m 250 target/release/main
