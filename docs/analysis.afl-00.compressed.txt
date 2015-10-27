@@ -1,0 +1,78 @@
+Analysis of frewsxcv.compressed:
+0x01 0xe6 0x00 0x76 0x42 0x10 0x01 0x1c 0x24 0x24 0x3c 0xd7 0xd7 0xd7 0x01 0x1c
+
+Brotli Stream Header
+====================
+0x01 = 0000 0001
+
+000 0001            # WBITS => decodes to 17
+                    # window size = 1 << WBITS - 16
+
+Brotli Meta-Block Header
+========================
+[0]
+
+0                   # ISLAST => false
+
+0xe6 = 1110 0110
+
+10                  # MNIBBLES => 6
+
+0x42 0x76 0x00 = 0100 0010 0111 0110 0000 0000 [1110 01]
+
+1001 1101 1000 0000 0011 1001 =
+
+0x9d 0x80 0x39
+           # MLEN - 1 = 10321977 => MLEN = 10321978
+
+[0100 00]
+
+0                   # ISUNCOMPRESSED => false
+
+0                   # NBLTYPESL = 1
+0                   # NBLTYPESI = 1
+0                   # NBLTYPESD = 1
+01                  # NPOSTFIX = 1
+
+0x10 = 0001 0000
+
+0000                # NDIRECT = 0
+01                  # CMODESL = [1]
+0                   # NTREESL = 1
+0                   # NTREESD = 1
+
+0x01 = 0000 0001
+
+                    # prefix code literals
+01                  # simple prefix code
+00                  # NSYM - 1 = 0 => NSYM == 1
+
+0x1c = 0001 1100 [0000]
+
+1100 0000           # symbol 0xc0 = 192
+
+                    # prefix code insert and copy lengths
+01                  # simple prefix code
+00                  # NSYM - 1 = 0 => NSYM == 1
+
+0x24 0x24 = 0010 0100 0010 0100
+
+00 0010 0100        # symbol 36
+
+                    # prefix code distances
+                    # alpabet size 16 + 96 = 112
+[0010 01]
+
+01                  # simple prefix code
+10                  # NSYM - 1 = 2 => NSYM == 3
+
+0xd7 0xd7 0x3c = 1101 0111 1101 0111 0011 1100 [00]
+
+111 0000            # symbol 0x70 = 112
+011 1001            # symbol 0x39 = 57
+111 1101            # symbol 0x7d = 125
+
+Stream should be rejected as invalid here.
+Symbol 125 >= alphabet size 112
+
+

@@ -1,0 +1,77 @@
+Analysis of afl-02.compressed:
+0x12 0x1b 0x00 0x1e 0x11 0x00 0x05 0x09 0x21 0x51 … 0x51 … 0x00 0x05 0x04 0x8a 0x05
+0xf5 0x21 0x1e 0x11 0x00 0x05 0x7b 0x21 0x00 0x05 0x14 0x52
+
+Brotli Stream Header
+====================
+0x12 = 0001 0010
+
+0                   # WBITS => decodes to 16
+                    # window size = 1 << WBITS - 16
+
+Brotli Meta-Block Header
+========================
+
+1                   # ISLAST => true
+0                   # ISLASTEMPTY => false
+10                  # MNIBBLES => 6
+
+0x1e 0x00 0x1b = 0001 1110 0000 0000 0001 1011 [000]
+
+1111 0000 0000 0000 1101 1000
+
+0xf0 0x00 0xd8      # MLEN - 1 = 15728856 => MLEN = 15728857
+
+0x11 = 0001 0001 [000]
+
+0                   # NBLTYPESL = 1
+0                   # NBLTYPESI = 1
+0                   # NBLTYPESD = 1
+01                  # NPOSTFIX = 1
+
+
+
+0100                # NDIRECT = 4 << 1 == 8
+00                  # CMODESL = [0]
+
+0x00 = 0000 0000
+
+0                   # NTREESL = 1
+0                   # NTREESD = 1
+
+                    # prefix code literals
+00                  # complex prefix code, HSKIP 0
+
+00                  # code length 1 = 0
+00                  # code length 2 = 0
+
+0x05 = 0000 0101
+01                  # code length 3 = 4
+01                  # code length 4 = 4
+00                  # code length 0 = 0
+00                  # code length 5 = 0
+
+0x09 = 0000 1001
+01                  # code length 17 = 4
+10                  # code length 6 = 3
+00                  # code length 16 = 0
+00                  # code length 7 = 0
+
+0x21 = 0010 0001
+01                  # code length 8 = 4
+00                  # code length 9 = 0
+10                  # code length 10 = 3
+00                  # code length 11 = 0
+
+0x51 = 0101 0001
+01                  # code length 12 = 4
+00                  # code length 13 = 0
+01                  # code length 14 = 4
+01                  # code length 15 = 4
+
+Stream should be rejected as invalid here.
+32 >> Codelength does not add up to 32 over all non-zero code lengths.
+
+
+
+
