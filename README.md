@@ -11,7 +11,8 @@ Compression provides a <Read>-struct to wrap a Brotli-compressed stream. A consu
 ###v0.3.15 -> v0.3.16
 ----------------
 
-Fixed incorrect calculation of alphabet size for distance code.
+- Fixed incorrect calculation of alphabet size for distance code.
+- Fixed evaluation where streams with excessive insert/copy lengths could be rejected early. 
 
 ###v0.3.14 -> v0.3.15
 ----------------

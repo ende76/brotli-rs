@@ -51,7 +51,7 @@ Brotli Meta-Block Header
 
 0x04 0x08 = 0000 0100 0000 1000
 
-00 0000 1000        # 1 insert and length symbol (alphabet size 704 => 10-bit) 0x0008
+00 0000 1000        # 1 insert and copy length symbol (alphabet size 704 => 10-bit) 0x0008
 
 [0000 01]
 
@@ -62,6 +62,10 @@ Brotli Meta-Block Header
 
 0000 00             # 1 distance symbol (alphabet size (16 + NDIRECT + (48 << NPOSTFIX)) == 64 => 6-bit)
 
+[no bits consumed]  # insert-and-copy-length-code 8
+                    # insert length code = 1
+                    # copy length code = 0
+[no bits consumed]  # literal symbol 0x58
 
 [0000 00]           # trailing bits
                     # MUST be zero
