@@ -1,7 +1,7 @@
 extern crate brotli;
 
 use std::io;
-use std::io::Read;
+use std::io::{Read, Write};
 use brotli::Decompressor;
 use std::fs;
 use std::path::Path;
@@ -29,11 +29,18 @@ fn visit_dirs(dir: &Path) -> io::Result<()> {
 }
 
 fn main() {
-	// let mut input = Vec::new();
-	// let res = Decompressor::new(std::fs::File::open("afl-findings/fuzzer01/hangs/id:000011,src:000168,op:havoc,rep:16").unwrap()).read_to_end(&mut input);
+	let mut input = Vec::new();
+	let res = Decompressor::new(std::fs::File::open("data/alice29.txt.compressed").unwrap()).read_to_end(&mut input);
 
-	for i in 1..5 {
-		let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/crashes", i)));
-		let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/hangs", i)));
-	}
+	match res {
+		Ok(_) => {
+			std::io::stdout().write(&input).unwrap();
+		},
+		Err(_) => println!("{:?}", res),
+	};
+
+	// for i in 1..5 {
+	// 	let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/crashes", i)));
+	// 	let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/hangs", i)));
+	// }
 }

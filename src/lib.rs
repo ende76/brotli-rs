@@ -2187,7 +2187,7 @@ impl<R: Read> Decompressor<R> {
 				State::Distance(distance) => {
 					self.meta_block.distance = Some(distance);
 
-					// debug(&format!("Distance = {:?}", distance));
+					// println!("Distance = {:?}", distance);
 
 					self.state = match self.copy_literals() {
 						Ok(state) => state,
