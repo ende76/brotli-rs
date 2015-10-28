@@ -1,0 +1,110 @@
+Analysis of afl-03.compressed:
+0x12 0x1b 0x00 0x1e 0x11 0x04 0x43 0x05 0xf5 0x21 0x1e 0x11 0x10 0x05 0x05 … 0xd9 …
+0x21 0x3d 0x11 0x10 0x05 0xf5 0x21 0x00 0x05 0x78 0x78 0x78 0x78 0x21 0x00 0x05
+0x78 0x4e 0x78 0x78
+
+Brotli Stream Header
+====================
+0x12 = 0001 0010
+
+0                   # WBITS => decodes to 16
+                    # window size = 1 << WBITS - 16
+
+Brotli Meta-Block Header
+========================
+
+1                   # ISLAST => true
+0                   # ISLASTEMPTY => false
+10                  # MNIBBLES => 6
+
+0x1e 0x00 0x1b = 0001 1110 0000 0000 0001 1011 [000]
+
+1111 0000 0000 0000 1101 1000
+
+0xf0 0x00 0xd8      # MLEN - 1 = 15728856 => MLEN = 15728857
+
+0x11 = 0001 0001 [000]
+
+0                   # NBLTYPESL = 1
+0                   # NBLTYPESI = 1
+0                   # NBLTYPESD = 1
+01                  # NPOSTFIX = 1
+0100                # NDIRECT = 4 << 1 == 8
+00                  # CMODESL = [0]
+
+0x04 = 0000 0100
+
+0                   # NTREESL = 1
+0                   # NTREESD = 1
+
+                    # prefix code literals
+                    # alphabet size 256
+01                  # simple prefix code
+00                  # NSYM - 1 == 0 => NSYM == 1
+
+0x43 = 0100 0011 [00]
+
+0000 1100           # symbol 0x0c = 12
+
+                    # prefix code insert-and-copy lengths
+                    # alphabet size 704
+01                  # simple prefix code
+
+0x05 = 0000 0101
+
+01                  # NSYM - 1 == 1 => NSYM == 2
+
+0xf5 = 1111 0101 [0000 01]
+
+01 0100 0001        # symbol 0x141 = 256 + 64 + 1 = 321
+
+0x21 = 0010 0001 [1111]
+
+10 0001 1111        # symbol 0x21f = 512 + 16 + 15 = 543
+
+0x1e = 0001 1110 [00]
+
+                    # prefix code distances
+                    # alphabet size 16 + 8 + (48 << 1) = 24 + 96 = 120
+00                  # complex prefix code, HSKIP 0
+
+10                  # code length 1 = 3
+0111                # code length 2 = 1
+00                  # code length 3 = 0
+
+0x11 = 0001 0001
+
+01                  # code length 4 = 4
+00                  # code length 0 = 0
+01                  # code length 5 = 4
+00                  # code length 17 = 0
+
+0x10 = 0001 0000
+
+00                  # code length 6 = 0
+00                  # code length 16 = 0
+01                  # code length 7 = 4
+00                  # code length 8 = 0
+
+0x05 = 0000 0101
+
+01                  # code length 9 = 4
+01                  # code length 10 = 4
+00                  # code length 11 = 0
+00                  # code length 12 = 0
+
+0x05 = 0000 0101
+
+01                  # code length 13 = 4
+
+[0000 01]
+
+001                 # code length code 1 = 1
+0                   # code length code 2 = 2
+0                   # code length code 2 = 2
+
+0xd9 = 1101 1001 [0]
+
+// continue at section 9.3. Format of the meta-block data
+
+

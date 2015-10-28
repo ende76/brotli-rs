@@ -290,7 +290,7 @@ impl Display for DecompressorError {
 impl Error for DecompressorError {
 	fn description(&self) -> &str {
 		match *self {
-			DecompressorError::CodeLengthsChecksum => "Code length check sum did not add up to 32 in complex prefix code",
+			DecompressorError::CodeLengthsChecksum => "Code length check sum did not add up in complex prefix code",
 			DecompressorError::ExpectedEndOfStream => "Expected end-of-stream, but stream did not end",
 			DecompressorError::ExceededExpectedBytes => "More uncompressed bytes than expected in meta-block",
 			DecompressorError::InvalidBlockCountCode => "Encountered invalid value for block count code",
@@ -665,8 +665,8 @@ impl<R: Read> Decompressor<R> {
 			_ => unreachable!(), // confirmed unreachable, NSYM is read from 2 bits, tree_select is Some(_) iff NSYM == 4
 		};
 
-		// debug(&format!("Sorted Symbols = {:?}", symbols));
-		// debug(&format!("Code Lengths = {:?}", code_lengths));
+		// println!("Sorted Symbols = {:?}", symbols);
+		// println!("Code Lengths = {:?}", code_lengths);
 
 		Ok(huffman::codes_from_lengths_and_symbols(&code_lengths, &symbols))
 	}
@@ -714,9 +714,9 @@ impl<R: Read> Decompressor<R> {
 				sum += 32 >> code_lengths[i];
 				len_non_zero_codelengths += 1;
 
-				// debug(&format!("code length = {:?}", code_lengths[i]));
-				// debug(&format!("32 >> code length = {:?}", 32 >> code_lengths[i]));
-				// debug(&format!("sum = {:?}", sum));
+				// println!("code length = {:?}", code_lengths[i]);
+				// println!("32 >> code length = {:?}", 32 >> code_lengths[i]);
+				// println!("sum = {:?}", sum);
 
 				if sum == 32 {
 					break;
@@ -765,13 +765,14 @@ impl<R: Read> Decompressor<R> {
 		// println!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths);
 		// println!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths.buf.iter().enumerate().filter(|&(_, l)| *l != None).collect::<Vec<_>>());
 
-		let mut actual_code_lengths = Vec::new();
+		let mut actual_code_lengths = vec![0usize; alphabet_size];
 		let mut sum = 0usize;
 		let mut last_symbol = None;
 		let mut last_repeat = None;
 		let mut last_non_zero_codelength = 8;
+		let mut i = 0;
 
-		loop {
+		while i < alphabet_size {
 			// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
 			// println!("Lone Symbol = {:?}", lone_symbol);
 
@@ -788,7 +789,8 @@ impl<R: Read> Decompressor<R> {
 
 			match code_length_code {
 				Some(new_code_length @ 0...15) => {
-					actual_code_lengths.push(new_code_length as usize);
+					actual_code_lengths[i] = new_code_length as usize;
+					i += 1;
 					last_symbol = Some(new_code_length);
 					last_repeat = None;
 
@@ -801,8 +803,11 @@ impl<R: Read> Decompressor<R> {
 
 						if sum == 32768 {
 							break;
+						} else if sum > 32768 {
+							return Err(DecompressorError::CodeLengthsChecksum)
 						}
 					}
+
 				},
 				Some(16) => {
 					let extra_bits = match self.in_stream.read_u8_from_n_bits(2) {
@@ -814,20 +819,23 @@ impl<R: Read> Decompressor<R> {
 						(Some(16), Some(last_repeat)) => {
 							let new_repeat: usize = (4 * (last_repeat - 2)) + extra_bits + 3;
 
+							if i + new_repeat - last_repeat > alphabet_size {
+								return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths);
+							}
+
 							for _ in 0..new_repeat - last_repeat {
-								actual_code_lengths.push(last_non_zero_codelength as usize);
+								actual_code_lengths[i] = last_non_zero_codelength as usize;
+								i += 1;
 
 								sum += 32768 >> last_non_zero_codelength;
 
 								// debug(&format!("32768 >> code length == {:?}, sum == {:?}", 32768 >> last_non_zero_codelength, sum));
-
-								if sum == 32768 {
-									break;
-								}
 							}
 
 							if sum == 32768 {
 								break;
+							} else if sum > 32768 {
+								return Err(DecompressorError::CodeLengthsChecksum)
 							}
 
 							Some(new_repeat)
@@ -835,20 +843,23 @@ impl<R: Read> Decompressor<R> {
 						(_, _) => {
 							let repeat = 3 + extra_bits;
 
+							if i + repeat > alphabet_size {
+								return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths);
+							}
+
 							for _ in 0..repeat {
-								actual_code_lengths.push(last_non_zero_codelength as usize);
+								actual_code_lengths[i] = last_non_zero_codelength as usize;
+								i += 1;
 
 								sum += 32768 >> last_non_zero_codelength;
 
 								// debug(&format!("32768 >> code length == {:?}, sum == {:?}", 32768 >> last_non_zero_codelength, sum));
-
-								if sum == 32768 {
-									break;
-								}
 							}
 
 							if sum == 32768 {
 								break;
+							} else if sum > 32768 {
+								return Err(DecompressorError::CodeLengthsChecksum)
 							}
 
 							Some(repeat)
@@ -865,42 +876,35 @@ impl<R: Read> Decompressor<R> {
 
 					// debug(&format!("code length = 17, extra bits = {:?}", extra_bits));
 
-
 					last_repeat = match (last_symbol, last_repeat) {
 						(Some(17), Some(last_repeat)) => {
 							let new_repeat = (8 * (last_repeat - 2)) + extra_bits as usize + 3;
-
-							for _ in 0..new_repeat - last_repeat {
-								actual_code_lengths.push(0);
-							}
+							i += new_repeat - last_repeat;
 
 							Some(new_repeat)
 						},
 						(_, _) => {
 							let repeat = 3 + extra_bits as usize;
-
-							for _ in 0..repeat {
-								actual_code_lengths.push(0);
-							}
+							i += repeat;
 
 							Some(repeat)
 						},
 					};
+
+					if i > alphabet_size {
+						return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths);
+					}
 
 					last_symbol = Some(17);
 				},
 				Some(_) => unreachable!(), // confirmed unreachable, the possible symbols are defined in code above
 				None => return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths),
 			};
-
-			if actual_code_lengths.len() > alphabet_size {
-				return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths);
-			}
 		}
 
 		// debug(&format!(""));
 
-		// debug(&format!("Actual Code Lengths = {:?}", actual_code_lengths));
+		// println!("Actual Code Lengths = {:?}", actual_code_lengths);
 
 		if actual_code_lengths.iter().filter(|&l| *l > 0).collect::<Vec<_>>().len() < 2 {
 			return Err(DecompressorError::LessThanTwoNonZeroCodeLengths);
