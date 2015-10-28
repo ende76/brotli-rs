@@ -1586,11 +1586,6 @@ impl<R: Read> Decompressor<R> {
 				Err(_) => return Err(DecompressorError::RingBufferError),
 			}
 
-			// for i in (count_output + window_size - distance)..(count_output + window_size - distance + l) {
-
-			// 	window[i - (count_output + window_size - distance)] = output_window[i % window_size];
-			// }
-
 			for i in l..copy_length {
 
 				window[i] = window[i % l];
@@ -2114,7 +2109,7 @@ impl<R: Read> Decompressor<R> {
 						_ => None,
 					};
 
-					// debug(&format!("Insert And Copy Length = {:?}", insert_and_copy_length));
+					// println!("Insert And Copy Length = {:?}", insert_and_copy_length);
 
 					self.state = match self.decode_insert_and_copy_length() {
 						Ok(state) => state,
@@ -2134,7 +2129,6 @@ impl<R: Read> Decompressor<R> {
 					// println!("(m_len, insert_length, copy_length) = {:?}", (m_len, self.meta_block.insert_length.unwrap() as usize, self.meta_block.copy_length.unwrap() as usize));
 
 					if (m_len < self.meta_block.count_output + self.meta_block.insert_length.unwrap() as usize) ||
-
 					   (m_len > self.meta_block.count_output + self.meta_block.insert_length.unwrap() as usize &&
 					    m_len < self.meta_block.count_output +
 					            self.meta_block.insert_length.unwrap() as usize +
@@ -2183,7 +2177,7 @@ impl<R: Read> Decompressor<R> {
 				State::DistanceCode(distance_code) => {
 					self.meta_block.distance_code = Some(distance_code);
 
-					// debug(&format!("Distance Code = {:?}", distance_code));
+					// println!("Distance Code = {:?}", distance_code);
 
 					self.state = match self.decode_distance() {
 						Ok(state) => state,
@@ -2219,8 +2213,6 @@ impl<R: Read> Decompressor<R> {
 					}
 
 					// debug(&format!("output = {:?}", self.buf));
-
-
 
 					self.state = if self.meta_block.header.m_len.unwrap() as usize == self.meta_block.count_output {
 

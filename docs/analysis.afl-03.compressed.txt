@@ -1,6 +1,6 @@
 Analysis of afl-03.compressed:
-0x12 0x1b 0x00 0x1e 0x11 0x04 0x43 0x05 0xf5 0x21 0x1e 0x11 0x10 0x05 0x05 … 0xd9 …
-0x21 0x3d 0x11 0x10 0x05 0xf5 0x21 0x00 0x05 0x78 0x78 0x78 0x78 0x21 0x00 0x05
+0x12 0x1b 0x00 0x1e 0x11 0x04 0x43 0x05 0xf5 0x21 0x1e 0x11 0x10 0x05 0x05 0xd9
+0x21 … 0x3d … 0x11 0x10 0x05 0xf5 0x21 0x00 0x05 0x78 0x78 0x78 0x78 0x21 0x00 0x05
 0x78 0x4e 0x78 0x78
 
 Brotli Stream Header
@@ -107,4 +107,45 @@ Brotli Meta-Block Header
 
 // continue at section 9.3. Format of the meta-block data
 
+0                   # insert-and-copy length code 321
+                    # insert length code = 8
+                    # copy length code = 9
+01                  # 2 extra bits insert length = 1 => 11
+0                   # 1 extra bit copy length = 0 => 12
+[no bits consumed]  # 11 * literal 0x0c
+11                  # distance code 2
+0                   # insert-and-copy length code 321
+                    # insert length code = 8
+                    # copy length code = 9
+11                  # 2 extra bits insert length = 3 => 13
+
+0x21 = 0010 0001
+
+1                   # 1 extra bit copy length = 1 => 13
+[no bits consumed]  # 13 * literal 0x0c
+0                   # distance code 0
+0                   # insert-and-copy length code 321
+                    # insert length code = 8
+                    # copy length code = 9
+00                  # 2 extra bits insert length = 0 => 10
+1                   # 1 extra bit copy length = 1 => 13
+[no bits consumed]  # 10 * literal 0x0c
+0                   # distance code 0
+0                   # insert-and-copy length code 321
+                    # insert length code = 8
+                    # copy length code = 9
+
+0x3d = 0011 1101
+
+01                  # 2 extra bits insert length = 1 => 11
+1                   # 1 extra bit copy length = 1 => 13
+[no bits consumed]  # 11 * literal 0x0c
+11                  # distance code 2
+1                   # insert-and-copy length code 543
+                    # insert length code = 8
+                    # copy length code = 9
+
+[Ending analysis here. It turns out that this file just keeps
+ accumulating literals until it goes over the very high limit
+ of mlean. That will always take a while.]
 

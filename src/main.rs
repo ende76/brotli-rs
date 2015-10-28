@@ -29,6 +29,8 @@ fn visit_dirs(dir: &Path) -> io::Result<()> {
 }
 
 fn main() {
+	// let mut input = Vec::new();
+	// let res = Decompressor::new(std::fs::File::open("afl-findings/fuzzer01/hangs/id:000011,src:000168,op:havoc,rep:16").unwrap()).read_to_end(&mut input);
 
 	for i in 1..5 {
 		let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/crashes", i)));
