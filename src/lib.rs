@@ -1625,7 +1625,9 @@ impl<R: Read> Decompressor<R> {
 	}
 
 
-	fn decompress(&mut self) -> Result<usize, DecompressorError> {
+	fn decompress(&mut self, buf: &mut [u8]) -> Result<usize, DecompressorError> {
+		let mut buf_pos = 0;
+
 		loop {
 			match self.state.clone() {
 				State::StreamBegin => {
@@ -1808,14 +1810,21 @@ impl<R: Read> Decompressor<R> {
 					};
 				},
 				State::MLenLiterals(m_len_literals) => {
-					for literal in m_len_literals {
-						self.buf.push_front(literal);
-						self.output_window.as_mut().unwrap().push(literal);
+					for literal in &m_len_literals {
+						if buf_pos < buf.len() {
+							buf[buf_pos] = *literal;
+							buf_pos += 1;
+						} else {
+							self.buf.push_front(*literal);
+						}
+						self.output_window.as_mut().unwrap().push(*literal);
 						self.count_output += 1;
 					}
 
 					self.state = State::MetaBlockEnd;
-					return Ok(self.buf.len());
+					if buf_pos == buf.len() {
+						return Ok(buf_pos);
+					}
 				},
 				State::IsUncompressed(false) => {
 					self.meta_block.header.is_uncompressed = Some(false);
@@ -2155,7 +2164,12 @@ impl<R: Read> Decompressor<R> {
 					}
 
 					for literal in &insert_literals {
-						self.buf.push_front(*literal);
+						if buf_pos < buf.len() {
+							buf[buf_pos] = *literal;
+							buf_pos += 1;
+						} else {
+							self.buf.push_front(*literal);
+						}
 						self.output_window.as_mut().unwrap().push(*literal);
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
@@ -2170,8 +2184,8 @@ impl<R: Read> Decompressor<R> {
 						}
 					};
 
-					if !self.buf.is_empty() {
-						return Ok(self.buf.len());
+					if buf_pos == buf.len() {
+						return Ok(buf_pos);
 					}
 				},
 				State::DistanceCode(distance_code) => {
@@ -2196,20 +2210,26 @@ impl<R: Read> Decompressor<R> {
 				},
 				State::CopyLiterals(copy_literals) => {
 					let m_len = self.meta_block.header.m_len.unwrap() as usize;
-					for literal in copy_literals {
-						self.buf.push_front(literal);
-						self.literal_buf.push(literal);
+
+					if m_len < self.meta_block.count_output + copy_literals.len() {
+
+						return Err(DecompressorError::ExceededExpectedBytes);
+					}
+
+					for literal in &copy_literals {
+						if buf_pos < buf.len() {
+							buf[buf_pos] = *literal;
+							buf_pos += 1;
+						} else {
+							self.buf.push_front(*literal);
+						}
+						self.literal_buf.push(*literal);
 
 						// debug(&format!("copy literal = {:?}", String::from_utf8(vec![literal])));
 
-						self.output_window.as_mut().unwrap().push(literal);
+						self.output_window.as_mut().unwrap().push(*literal);
 						self.count_output += 1;
 						self.meta_block.count_output += 1;
-
-						if m_len < self.meta_block.count_output {
-
-							return Err(DecompressorError::ExceededExpectedBytes);
-						}
 					}
 
 					// debug(&format!("output = {:?}", self.buf));
@@ -2224,7 +2244,9 @@ impl<R: Read> Decompressor<R> {
 
 					// debug(&format!("output so far = {}", String::from_utf8(self.output_window.unwrap().clone().iter().filter(|&b| *b > 0).map(|b| *b).collect::<Vec<_>>()).unwrap()));
 
-					return Ok(self.buf.len());
+					if buf_pos == buf.len() {
+						return Ok(buf_pos);
+					}
 				},
 				State::DataMetaBlockEnd => {
 
@@ -2247,7 +2269,7 @@ impl<R: Read> Decompressor<R> {
 					}
 
 					match self.in_stream.read_u8() {
-						Err(BitReaderError::EOF) => return Ok(self.buf.len()),
+						Err(BitReaderError::EOF) => return Ok(buf_pos),
 						Ok(_) => return Err(DecompressorError::ExpectedEndOfStream),
 						Err(_) => return Err(DecompressorError::UnexpectedEOF),
 					}
@@ -2258,21 +2280,24 @@ impl<R: Read> Decompressor<R> {
 }
 
 impl<R: Read> Read for Decompressor<R> {
-	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+	fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
 		if self.buf.is_empty() {
-			match self.decompress() {
-				Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e.description())),
-				Ok(_) => {},
+			match self.decompress(&mut buf) {
+				Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e.description())),
+				Ok(l) => {
+					Ok(l)
+				},
 			}
+		} else {
+			let l = cmp::min(self.buf.len(), buf.len());
+
+			for i in 0..l {
+				buf[i] = self.buf.pop_back().unwrap();
+			}
+
+			Ok(l)
 		}
 
-		let l = cmp::min(self.buf.len(), buf.len());
-
-		for i in 0..l {
-			buf[i] = self.buf.pop_back().unwrap();
-		}
-
-		Ok(l)
 	}
 }
 

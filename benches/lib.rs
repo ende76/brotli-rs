@@ -47,6 +47,17 @@ fn bench_monkey(b: &mut Bencher) {
 	});
 }
 
+#[bench]
+fn bench_alice(b: &mut Bencher) {
+	use std::io::Read;
+	use brotli::Decompressor;
+
+	b.iter(|| {
+		let mut input = Vec::new();
+		let _ = Decompressor::new(std::fs::File::open("data/alice29.txt.compressed").unwrap()).read_to_end(&mut input);
+	});
+}
+
 
 #[bench]
 fn bench_bitstring_version_0(b: &mut Bencher) {
