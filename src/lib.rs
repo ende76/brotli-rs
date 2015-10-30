@@ -78,7 +78,7 @@ struct Header {
 	wbits: Option<WBits>,
 	wbits_codes: Option<HuffmanCodes>,
 	window_size: Option<usize>,
-	bltype_codes: Option<HuffmanCodes>,
+	bltype_codes: HuffmanCodes,
 }
 
 impl Header {
@@ -86,7 +86,13 @@ impl Header {
 		Header{
 			wbits: None,
 			wbits_codes: None,
-			bltype_codes: None,
+			bltype_codes: Tree::from_raw_data(
+				vec![None, Some(1), None, None, None, None, None, None,
+				 None, None, None, None, None, None, None, None,
+				 None, None, None, None, None, None, None, Some(2),
+				 Some(17), Some(5), Some(65), Some(3), Some(33), Some(9), Some(129)],
+				9, Some(129)
+			),
 			window_size: None,
 		}
 	}
@@ -214,7 +220,6 @@ enum State {
 	MLen(MLen),
 	IsUncompressed(IsUncompressed),
 	MLenLiterals(MLenLiterals),
-	BltypeCodes(HuffmanCodes),
 	NBltypesL(NBltypes),
 	PrefixCodeBlockTypesLiterals(HuffmanCodes),
 	PrefixCodeBlockCountsLiterals(HuffmanCodes),
@@ -491,31 +496,9 @@ impl<R: Read> Decompressor<R> {
 		Ok(State::MLenLiterals(bytes))
 	}
 
-	fn create_block_type_codes() -> Result<State, DecompressorError> {
-		let bit_patterns = vec![
-			vec![false],
-			vec![true, false, false, false],
-			vec![true, true, false, false],
-			vec![true, false, true, false],
-			vec![true, true, true, false],
-			vec![true, false, false, true],
-			vec![true, true, false, true],
-			vec![true, false, true, true],
-			vec![true, true, true, true],
-		];
-		let symbols = vec![1, 2, 3, 5, 9, 17, 33, 65, 129];
-		let mut codes = Tree::with_max_depth(4);
-
-		for i in 0..bit_patterns.len() {
-			codes.insert(&bit_patterns[i], symbols[i]);
-		}
-
-		Ok(State::BltypeCodes(codes))
-	}
-
 	fn parse_n_bltypes(&mut self) -> Result<NBltypes, DecompressorError> {
 
-		let (value, extra_bits) = match self.header.bltype_codes.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+		let (value, extra_bits) = match self.header.bltype_codes.lookup_symbol(&mut self.in_stream) {
 			Ok(Some(symbol @ 1...2)) => (symbol, 0),
 			Ok(Some(symbol @     3)) => (symbol, 1),
 			Ok(Some(symbol @     5)) => (symbol, 2),
@@ -1778,19 +1761,16 @@ impl<R: Read> Decompressor<R> {
 
 					// println!("MLEN = {:?}", m_len);
 
-					self.state = match (&self.meta_block.header.is_last.unwrap(), &self.header.bltype_codes) {
-						(&false, _) => match self.parse_is_uncompressed() {
+					self.state = if self.meta_block.header.is_last.unwrap() {
+						match self.parse_n_bltypes_l() {
 							Ok(state) => state,
 							Err(_) => return Err(DecompressorError::UnexpectedEOF),
-						},
-						(&true, &None) => match Self::create_block_type_codes() {
+						}
+					} else {
+						match self.parse_is_uncompressed() {
 							Ok(state) => state,
 							Err(_) => return Err(DecompressorError::UnexpectedEOF),
-						},
-						(&true, &Some(_)) => match self.parse_n_bltypes_l() {
-							Ok(state) => state,
-							Err(_) => return Err(DecompressorError::UnexpectedEOF),
-						},
+						}
 					};
 				},
 				State::IsUncompressed(true) => {
@@ -1831,24 +1811,10 @@ impl<R: Read> Decompressor<R> {
 
 					// println!("UNCOMPRESSED = false");
 
-					self.state = match self.header.bltype_codes {
-						None => match Self::create_block_type_codes() {
-							Ok(state) => state,
-							Err(e) => return Err(e),
-						},
-						Some(_) => match self.parse_n_bltypes_l() {
-							Ok(state) => state,
-							Err(e) => return Err(e),
-						},
-					};
-				},
-				State::BltypeCodes(bltype_codes) => {
-					self.header.bltype_codes = Some(bltype_codes);
-
 					self.state = match self.parse_n_bltypes_l() {
-						Ok(state) => state,
-						Err(e) => return Err(e),
-					}
+							Ok(state) => state,
+							Err(e) => return Err(e),
+					};
 				},
 				State::NBltypesL(n_bltypes_l) => {
 					self.meta_block.header.n_bltypes_l = Some(n_bltypes_l);

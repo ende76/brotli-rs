@@ -29,18 +29,18 @@ fn visit_dirs(dir: &Path) -> io::Result<()> {
 }
 
 fn main() {
-	let mut input = Vec::new();
-	let res = Decompressor::new(std::fs::File::open("data/alice29.txt.compressed").unwrap()).read_to_end(&mut input);
+	// let mut input = Vec::new();
+	// let res = Decompressor::new(std::fs::File::open("data/alice29.txt.compressed").unwrap()).read_to_end(&mut input);
 
-	match res {
-		Ok(_) => {
-			std::io::stdout().write(&input).unwrap();
-		},
-		Err(_) => println!("{:?}", res),
-	};
+	// match res {
+	// 	Ok(_) => {
+	// 		std::io::stdout().write(&input).unwrap();
+	// 	},
+	// 	Err(_) => println!("{:?}", res),
+	// };
 
-	// for i in 1..5 {
-	// 	let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/crashes", i)));
-	// 	let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/hangs", i)));
-	// }
+	for i in 1..7 {
+		let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/crashes", i)));
+		let _ = visit_dirs(Path::new(&format!("afl-findings/fuzzer0{}/hangs", i)));
+	}
 }

@@ -43,6 +43,14 @@ impl Tree {
 		}
 	}
 
+	pub fn from_raw_data(buf: Vec<Option<Symbol>>, len: usize, last_symbol: Option<Symbol>) -> Tree {
+		Tree {
+			buf: buf,
+			len: len,
+			last_symbol: last_symbol,
+		}
+	}
+
 	fn left(index: usize) -> usize {
 		(index << 1) + 1
 	}
