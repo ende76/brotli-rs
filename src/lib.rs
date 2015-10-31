@@ -76,8 +76,9 @@ enum PrefixCodeKind {
 #[derive(Debug, Clone, PartialEq)]
 struct Header {
 	wbits: Option<WBits>,
-	wbits_codes: Option<HuffmanCodes>,
+	wbits_codes: HuffmanCodes,
 	window_size: Option<usize>,
+	bit_lengths_code: HuffmanCodes,
 	bltype_codes: HuffmanCodes,
 }
 
@@ -85,12 +86,48 @@ impl Header {
 	fn new() -> Header {
 		Header{
 			wbits: None,
-			wbits_codes: None,
+			wbits_codes: Tree::from_raw_data(
+				vec![None, Some(16), None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None,
+				     Some(21), Some(19), Some(23), Some(18), Some(22), Some(20), Some(24), None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, Some(17), Some(12),
+				     Some(10), Some(14), None, Some(13), Some(11), Some(15), None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, None, None],
+				15, Some(24)),
+			bit_lengths_code: Tree::from_raw_data(
+				vec![None, None, None, Some(0), Some(3), Some(4), None, None,
+				     None, None, None, None, None, Some(2), None, None,
+				     None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, Some(1), Some(5)],
+				6, Some(5)),
 			bltype_codes: Tree::from_raw_data(
 				vec![None, Some(1), None, None, None, None, None, None,
-				 None, None, None, None, None, None, None, None,
-				 None, None, None, None, None, None, None, Some(2),
-				 Some(17), Some(5), Some(65), Some(3), Some(33), Some(9), Some(129)],
+				     None, None, None, None, None, None, None, None,
+				     None, None, None, None, None, None, None, Some(2),
+				     Some(17), Some(5), Some(65), Some(3), Some(33), Some(9), Some(129)],
 				9, Some(129)
 			),
 			window_size: None,
@@ -208,7 +245,6 @@ impl MetaBlockHeader {
 enum State {
 	StreamBegin,
 	HeaderBegin,
-	WBitsCodes(HuffmanCodes),
 	WBits(WBits),
 	HeaderEnd,
 	HeaderMetaBlockBegin,
@@ -379,36 +415,8 @@ impl<R: Read> Decompressor<R> {
 		}
 	}
 
-	fn create_wbits_codes() -> Result<State, DecompressorError> {
-		let bit_patterns = vec![
-			vec![true, false, false, false, false, true, false],
-			vec![true, false, false, false, true, true, false],
-			vec![true, false, false, false, false, false, true],
-			vec![true, false, false, false, true, false, true],
-			vec![true, false, false, false, false, true, true],
-			vec![true, false, false, false, true, true, true],
-			vec![false],
-			vec![true, false, false, false, false, false, false],
-			vec![true, true, false, false],
-			vec![true, false, true, false],
-			vec![true, true, true, false],
-			vec![true, false, false, true],
-			vec![true, true, false, true],
-			vec![true, false, true, true],
-			vec![true, true, true, true],
-		];
-		let symbols = vec![10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
-		let mut codes = Tree::with_max_depth(7);
-
-		for i in 0..bit_patterns.len() {
-			codes.insert(&bit_patterns[i], symbols[i]);
-		}
-
-		Ok(State::WBitsCodes(codes))
-	}
-
 	fn parse_wbits(&mut self) -> Result<State, DecompressorError> {
-		match self.header.wbits_codes.as_ref().unwrap().lookup_symbol(&mut self.in_stream) {
+		match self.header.wbits_codes.lookup_symbol(&mut self.in_stream) {
 			Ok(Some(symbol)) => Ok(State::WBits(symbol as WBits)),
 			Ok(None) => Err(DecompressorError::UnexpectedEOF),
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
@@ -657,28 +665,7 @@ impl<R: Read> Decompressor<R> {
 	fn parse_complex_prefix_code(&mut self, h_skip: u8, alphabet_size: usize)
 			-> Result<HuffmanCodes, DecompressorError> {
 		let mut symbols = vec![1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-		// @TODO have bit_lengths_code as a constant,
-		//       or generate it at most once when instantiating
-		//       the Decompressor
-		let bit_lengths_code = {
-			let bit_lengths_patterns = vec![
-				vec![false, false],
-				vec![true, true, true, false],
-				vec![true, true, false],
-				vec![false, true],
-				vec![true, false],
-				vec![true, true, true, true],
-			];
-
-			let symbols = vec![0, 1, 2, 3, 4, 5];
-			let mut codes = Tree::with_max_depth(4);
-
-			for i in 0..bit_lengths_patterns.len() {
-				codes.insert(&bit_lengths_patterns[i], symbols[i]);
-			}
-
-			codes
-		};
+		let bit_lengths_code = &self.header.bit_lengths_code;
 
 		let mut code_lengths = vec![0; symbols.len()];
 		let mut sum = 0usize;
@@ -1618,14 +1605,6 @@ impl<R: Read> Decompressor<R> {
 					self.state = State::HeaderBegin;
 				},
 				State::HeaderBegin => {
-					self.state = match Self::create_wbits_codes() {
-						Ok(state) => state,
-						Err(e) => return Err(e),
-					};
-				},
-				State::WBitsCodes(wbits_codes) => {
-					self.header.wbits_codes = Some(wbits_codes);
-
 					self.state = match self.parse_wbits() {
 						Ok(state) => state,
 						Err(e) => return Err(e),

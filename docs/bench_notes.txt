@@ -7,3 +7,6 @@ After:
 
 test bench_alice               ... bench:  13,092,721 ns/iter (+/- 2,748,902)
 test bench_monkey              ... bench:     116,904 ns/iter (+/- 40,376)
+
+test bench_alice               ... bench:  12,511,070 ns/iter (+/- 1,628,614)
+test bench_monkey              ... bench:     114,726 ns/iter (+/- 16,194)
