@@ -202,6 +202,35 @@ impl<R: Read> BitReader<R> {
 		}
 	}
 
+	/// Reads one bit from the stream, returns a usize result.
+	/// Returns a BitReaderError if the stream ends prematurely.
+	pub fn read_bit_as_usize(&mut self) -> Result<usize, BitReaderError> {
+		// println!("bit pos = {:?}", self.global_bit_pos);
+
+		match (self.current_byte, self.bit_pos) {
+			(Some(byte), bit_pos) => {
+				self.bit_pos = (self.bit_pos + 1) % 8;
+				self.global_bit_pos += 1;
+				if self.bit_pos == 0 {
+					self.current_byte = None;
+				}
+				Ok((byte as usize) >> bit_pos & 1)
+			},
+			(None, _) => {
+				let mut buf = &mut [0u8; 1];
+				match self.read_exact(buf) {
+					Ok(()) => {
+						self.current_byte = Some(buf[0]);
+						self.bit_pos = 1;
+						self.global_bit_pos += 1;
+						Ok((buf[0] as usize) & 1)
+					},
+					Err(_) => Err(BitReaderError::Unspecified),
+				}
+			}
+		}
+	}
+
 	/// Reads a u8 from n bits from the stream.
 	/// Returns a BitReaderError if the stream ends prematurely, or if n exceeds the
 	/// possible number of bits.

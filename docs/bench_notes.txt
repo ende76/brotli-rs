@@ -1,12 +1,9 @@
 Before:
 
-test bench_alice               ... bench:  13,188,606 ns/iter (+/- 2,197,759)
-test bench_monkey              ... bench:     119,634 ns/iter (+/- 61,183)
+test bench_alice               ... bench:  12,611,319 ns/iter (+/- 1,182,416)
+test bench_monkey              ... bench:     112,342 ns/iter (+/- 23,078)
 
 After:
 
-test bench_alice               ... bench:  13,092,721 ns/iter (+/- 2,748,902)
-test bench_monkey              ... bench:     116,904 ns/iter (+/- 40,376)
-
-test bench_alice               ... bench:  12,511,070 ns/iter (+/- 1,628,614)
-test bench_monkey              ... bench:     114,726 ns/iter (+/- 16,194)
+test bench_alice               ... bench:  11,755,989 ns/iter (+/- 1,137,982)
+test bench_monkey              ... bench:      98,630 ns/iter (+/- 14,143)

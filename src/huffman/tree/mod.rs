@@ -1,7 +1,9 @@
 use ::bitreader::BitReader;
 use std::io::Read;
 
-// For Huffman codes used in the Deflate spec, is seems that the length of a
+mod pseudocode;
+
+// For Huffman codes used in the Brotli spec, is seems that the length of a
 // code is at most 10 bits (max alphabet size is 704).
 // For this simple use case, we don't need/want to deal with type parameters.
 pub type Symbol = u16;
@@ -51,14 +53,6 @@ impl Tree {
 		}
 	}
 
-	fn left(index: usize) -> usize {
-		(index << 1) + 1
-	}
-
-	fn right(index: usize) -> usize {
-		(index << 1) + 2
-	}
-
 	pub fn insert(&mut self, code: &[bool], symbol: Symbol) {
 		self.len += 1;
 		self.last_symbol = Some(symbol);
@@ -73,19 +67,14 @@ impl Tree {
 	}
 
 	fn lookup<R: Read>(&self, r: &mut BitReader<R>) -> Result<Option<Symbol>, ::bitreader::BitReaderError> {
-		let mut lookup_index = 0;
+		let mut pseudo_code = 1;
 		loop {
-			lookup_index = match r.read_bit() {
-				Ok(true) => {
-					// println!("true, right");
-					Self::right(lookup_index)
-				},
-				Ok(false) => {
-					// println!("false, left");
-					Self::left(lookup_index)
-				},
+			pseudo_code = (pseudo_code << 1) + match r.read_bit_as_usize() {
+				Ok(b) => b,
 				Err(e) => return Err(e),
 			};
+
+			let lookup_index = pseudocode::LUT_PSEUDO_CODE[pseudo_code];
 
 			if lookup_index > self.buf.len() - 1 {
 				return Ok(None);
