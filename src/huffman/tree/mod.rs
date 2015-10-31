@@ -63,15 +63,7 @@ impl Tree {
 		self.len += 1;
 		self.last_symbol = Some(symbol);
 
-		let mut insert_at_index = 0;
-
-		for b in code {
-			insert_at_index = if *b {
-				Self::right(insert_at_index)
-			} else {
-				Self::left(insert_at_index)
-			};
-		}
+		let insert_at_index = (1 << code.len()) - 1 + code.iter().fold(0, |acc, &bit| (acc << 1) + if bit { 1 } else { 0 });
 
 		if insert_at_index > self.buf.len() - 1 {
 			panic!("Index {:?} exceeds MAX_INDEX at insert (code = {:?})", insert_at_index, code);
