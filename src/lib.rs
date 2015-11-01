@@ -16,7 +16,7 @@ mod ringbuffer;
 mod dictionary;
 use ::dictionary::{ BROTLI_DICTIONARY_OFFSETS_BY_LENGTH, BROTLI_DICTIONARY_SIZE_BITS_BY_LENGTH, BROTLI_DICTIONARY };
 mod lookuptable;
-use ::lookuptable::{ LUT_0, LUT_1, LUT_2 };
+use ::lookuptable::{ LUT_0, LUT_1, LUT_2, INSERT_AND_COPY_LENGTH_CODES };
 mod transformation;
 use ::transformation::transformation;
 
@@ -1211,23 +1211,7 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn decode_insert_and_copy_length(&mut self) -> Result<State, DecompressorError> {
-		let (mut insert_length_code, mut copy_length_code) = match self.meta_block.insert_and_copy_length {
-			Some(0...63) => (0, 0),
-			Some(64...127) => (0, 8),
-			Some(128...191) => (0, 0),
-			Some(192...255) => (0, 8),
-			Some(256...319) => (8, 0),
-			Some(320...383) => (8, 8),
-			Some(384...447) => (0, 16),
-			Some(448...511) => (16, 0),
-			Some(512...575) => (8, 16),
-			Some(576...639) => (16, 8),
-			Some(640...703) => (16, 16),
-			_ => return Err(DecompressorError::InvalidInsertAndCopyLengthCode),
-		};
-
-		insert_length_code += 0x07 & (self.meta_block.insert_and_copy_length.unwrap() as u8 >> 3);
-		copy_length_code += 0x07 & self.meta_block.insert_and_copy_length.unwrap() as u8;
+		let (mut insert_length_code, mut copy_length_code) = INSERT_AND_COPY_LENGTH_CODES[self.meta_block.insert_and_copy_length.unwrap() as usize];
 
 		// debug(&format!("(insert code, copy code) = {:?}", (insert_length_code, copy_length_code)));
 
