@@ -16,7 +16,7 @@ mod ringbuffer;
 mod dictionary;
 use ::dictionary::{ BROTLI_DICTIONARY_OFFSETS_BY_LENGTH, BROTLI_DICTIONARY_SIZE_BITS_BY_LENGTH, BROTLI_DICTIONARY };
 mod lookuptable;
-use ::lookuptable::{ LUT_0, LUT_1, LUT_2, INSERT_AND_COPY_LENGTH_CODES };
+use ::lookuptable::{ LUT_0, LUT_1, LUT_2, INSERT_LENGTHS_AND_COPY_LENGTHS };
 mod transformation;
 use ::transformation::transformation;
 
@@ -1211,50 +1211,14 @@ impl<R: Read> Decompressor<R> {
 	}
 
 	fn decode_insert_and_copy_length(&mut self) -> Result<State, DecompressorError> {
-		let (mut insert_length_code, mut copy_length_code) = INSERT_AND_COPY_LENGTH_CODES[self.meta_block.insert_and_copy_length.unwrap() as usize];
-
-		// debug(&format!("(insert code, copy code) = {:?}", (insert_length_code, copy_length_code)));
-
-		let (mut insert_length, extra_bits_insert): (InsertLength, _) = match insert_length_code {
-			0...5 => (insert_length_code as InsertLength, 0),
-			6...7 => (6 + 2 * (insert_length_code as InsertLength - 6) , 1),
-			8...9 => (10 + 4 * (insert_length_code as InsertLength - 8) , 2),
-			10...11 => (18 + 8 * (insert_length_code as InsertLength - 10) , 3),
-			12...13 => (34 + 16 * (insert_length_code as InsertLength - 12) , 4),
-			14...15 => (66 + 32 * (insert_length_code as InsertLength - 14) , 5),
-			16 => (130, 6),
-			17 => (194, 7),
-			18 => (322, 8),
-			19 => (578, 9),
-			20 => (1090, 10),
-			21 => (2114, 12),
-			22 => (6210, 14),
-			23 => (22594, 24),
-			_ => unreachable!(), // confirmed unreachable, possible value is entirely defined in code above
-		};
+		let ((mut insert_length, extra_bits_insert), (mut copy_length, extra_bits_copy)) = INSERT_LENGTHS_AND_COPY_LENGTHS[self.meta_block.insert_and_copy_length.unwrap() as usize];
 
 		insert_length += match self.in_stream.read_u32_from_n_bits(extra_bits_insert) {
 			Ok(my_u32) => my_u32,
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
 
-		let (mut copy_length, extra_bits_insert): (CopyLength, _) = match copy_length_code {
-			0...7 => (copy_length_code as CopyLength + 2, 0),
-			8...9 => (10 + 2 * (copy_length_code as CopyLength - 8) , 1),
-			10...11 => (14 + 4 * (copy_length_code as CopyLength - 10) , 2),
-			12...13 => (22 + 8 * (copy_length_code as CopyLength - 12) , 3),
-			14...15 => (38 + 16 * (copy_length_code as CopyLength - 14) , 4),
-			16...17 => (70 + 32 * (copy_length_code as CopyLength - 16) , 5),
-			18 => (134, 6),
-			19 => (198, 7),
-			20 => (326, 8),
-			21 => (582, 9),
-			22 => (1094, 10),
-			23 => (2118, 24),
-			_ => unreachable!(), // confirmed unreachable, possible value is entirely defined in code above
-		};
-
-		copy_length += match self.in_stream.read_u32_from_n_bits(extra_bits_insert) {
+		copy_length += match self.in_stream.read_u32_from_n_bits(extra_bits_copy) {
 			Ok(my_u32) => my_u32,
 			Err(_) => return Err(DecompressorError::UnexpectedEOF),
 		};
