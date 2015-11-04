@@ -501,9 +501,8 @@ fn should_reject_frewsxcv_10() {
 
 #[test]
 #[should_panic(expected="invalid symbol")]
-/// frewsxcv: fuzzer-test
+/// afl: fuzzer-test
 /// exposes uncaught invalid block type in block switch command
-/// found and reported by Corey Farwell – https://github.com/ende76/brotli-rs/issues/10
 fn should_reject_afl_00() {
 	use std::io::Read;
 	use brotli::Decompressor;
@@ -516,6 +515,23 @@ fn should_reject_afl_00() {
 		_ => {},
 	}
 
+}
+
+#[test]
+#[should_panic(expected="invalid symbol")]
+/// afl: fuzzer-test
+/// exposes failure to reject simple prefix code with duplicate symbols
+fn should_reject_afl_01() {
+	use std::io::Read;
+	use brotli::Decompressor;
+
+	let mut input = vec![];
+	let result = Decompressor::new(&b"\x9b\x01\x10\xed\xa3\xb0\x96\xd2\x81\x47\x00\x00\x01\x1e\x07\xa4\xce\xb2\xea\x81\x4b\x02\x8a".to_vec() as &[u8]).read_to_end(&mut input);
+
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
 }
 
 fn inverse_move_to_front_transform(v: &mut[u8]) {

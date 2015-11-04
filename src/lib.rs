@@ -621,6 +621,14 @@ impl<R: Read> Decompressor<R> {
 			}
 		}
 
+		for i in 0..(symbols.len() - 1) {
+			for j in (i + 1)..symbols.len() {
+				if symbols[i] == symbols[j] {
+					return Err(DecompressorError::InvalidSymbol);
+				}
+			}
+		}
+
 		// println!("Symbols = {:?}", symbols);
 		// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
 
