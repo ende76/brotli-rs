@@ -580,6 +580,16 @@ fn move_to_front_transform(v: &mut[u8]) {
 	}
 }
 
+#[test]
+fn should_not_change() {
+	let mut v: Vec<u8> = vec![0, 0, 0, 1];
+	let expected = v.clone();
+
+	inverse_move_to_front_transform(&mut v);
+
+	assert_eq!(expected, v);
+}
+
 
 #[test]
 fn should_compose_to_identity() {

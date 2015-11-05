@@ -721,21 +721,6 @@ impl<R: Read> Decompressor<R> {
 		// debug(&format!("Code Lengths = {:?}", code_lengths));
 		// debug(&format!("Symbols = {:?}", symbols));
 
-		let lone_symbol = {
-			if sum < 32 {
-				let mut i = 0;
-				while code_lengths[i] == 0 {
-					i += 1;
-				}
-				Some(symbols[i])
-			} else {
-				None
-			}
-		};
-
-		// println!("Code Lengths = {:?}", code_lengths);
-		// debug(&format!("Symbols = {:?}", symbols));
-
 		let prefix_code_code_lengths = huffman::codes_from_lengths_and_symbols(&code_lengths, &symbols);
 
 		// println!("Prefix Code CodeLengths = {:?}", prefix_code_code_lengths);
@@ -750,16 +735,11 @@ impl<R: Read> Decompressor<R> {
 
 		while i < alphabet_size {
 			// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
-			// println!("Lone Symbol = {:?}", lone_symbol);
 
-			let code_length_code = if lone_symbol == None {
-				match prefix_code_code_lengths.lookup_symbol(&mut self.in_stream) {
-					Ok(symbol) => symbol,
-					Err(_) => return Err(DecompressorError::UnexpectedEOF),
-				}
-			} else { lone_symbol };
-
-			// debug(&format!("lone_symbol = {:?}", lone_symbol));
+			let code_length_code = match prefix_code_code_lengths.lookup_symbol(&mut self.in_stream) {
+				Ok(symbol) => symbol,
+				Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			};
 
 			// println!("code length code = {:?}", code_length_code);
 

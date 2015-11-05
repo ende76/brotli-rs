@@ -38,7 +38,6 @@ pub struct Tree {
 impl Tree {
 	pub fn with_max_depth(max_depth: usize) -> Tree {
 		Tree {
-			// @NOTE maybe take parameter here, to reserve only the necessary size
 			buf: vec![None; (1 << (max_depth + 1)) - 1],
 			len: 0,
 			last_symbol: None,
