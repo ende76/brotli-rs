@@ -715,6 +715,8 @@ impl<R: Read> Decompressor<R> {
 		// println!("Code Lengths = {:?}", code_lengths);
 		// println!("Symbols = {:?}", symbols);
 
+		// println!("global_bit_pos = {:?}", self.in_stream.global_bit_pos);
+
 		code_lengths = vec![code_lengths[4], code_lengths[0], code_lengths[1], code_lengths[2], code_lengths[3], code_lengths[5], code_lengths[7], code_lengths[9], code_lengths[10], code_lengths[11], code_lengths[12], code_lengths[13], code_lengths[14], code_lengths[15], code_lengths[16], code_lengths[17], code_lengths[8], code_lengths[6]];
 		symbols = (0..18).collect::<Vec<_>>();
 
@@ -733,8 +735,9 @@ impl<R: Read> Decompressor<R> {
 		let mut last_non_zero_codelength = 8;
 		let mut i = 0;
 
+		// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
+
 		while i < alphabet_size {
-			// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
 
 			let code_length_code = match prefix_code_code_lengths.lookup_symbol(&mut self.in_stream) {
 				Ok(symbol) => symbol,
@@ -742,6 +745,7 @@ impl<R: Read> Decompressor<R> {
 			};
 
 			// println!("code length code = {:?}", code_length_code);
+			// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
 
 			match code_length_code {
 				Some(new_code_length @ 0...15) => {
@@ -856,6 +860,8 @@ impl<R: Read> Decompressor<R> {
 				Some(_) => unreachable!(), // confirmed unreachable, the possible symbols are defined in code above
 				None => return Err(DecompressorError::ParseErrorComplexPrefixCodeLengths),
 			};
+
+			// println!("sum = {:?}", sum);
 		}
 
 		// debug(&format!(""));
@@ -1013,6 +1019,9 @@ impl<R: Read> Decompressor<R> {
 		let mut prefix_codes = Vec::with_capacity(n_trees_l);
 		let alphabet_size = 256;
 
+		// println!("NTREESL = {:?}", n_trees_l);
+		// println!("alphabet_size = {:?}", alphabet_size);
+
 		for _ in 0..n_trees_l {
 			prefix_codes.push(match self.parse_prefix_code(alphabet_size) {
 				Ok(prefix_code) => prefix_code,
@@ -1027,6 +1036,9 @@ impl<R: Read> Decompressor<R> {
 		let n_bltypes_i = self.meta_block.header.n_bltypes_i.unwrap() as usize;
 		let mut prefix_codes = Vec::with_capacity(n_bltypes_i);
 		let alphabet_size = 704;
+
+		// println!("NBLTYPESI = {:?}", n_bltypes_i);
+		// println!("alphabet_size = {:?}", alphabet_size);
 
 		for _ in 0..n_bltypes_i {
 			prefix_codes.push(match self.parse_prefix_code(alphabet_size) {
@@ -1950,6 +1962,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.header.c_map_d = Some(c_map_d);
 
 					// debug(&format!("CMAPD = {:?}", self.meta_block.header.c_map_d));
+					// println!("CMAPD done");
+					// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
 
 					self.state = match self.parse_prefix_codes_literals() {
 						Ok(state) => state,
@@ -1960,6 +1974,8 @@ impl<R: Read> Decompressor<R> {
 					self.meta_block.prefix_trees_literals = Some(prefix_trees);
 
 					// debug(&format!("Prefix Trees Literals = {:?}", self.meta_block.prefix_trees_literals));
+					// println!("HTREEL done");
+					// println!("global bit pos = {:?}", self.in_stream.global_bit_pos);
 
 					self.state = match self.parse_prefix_codes_insert_and_copy_lengths() {
 						Ok(state) => state,
