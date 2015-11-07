@@ -8,6 +8,11 @@ Compression provides a \<Read\>-struct to wrap a Brotli-compressed stream. A con
 
 ## Changelog
 
+###v0.3.18 -> v0.3.19
+----------------
+
+Removed 64k big Pseudo-Code lookup table, because creating this trivial table probably took more time than making the calculcation on the fly. (Bench tests seem to suggest a 1% time savings without the lookup table)
+
 ###v0.3.17 -> v0.3.18
 ----------------
 
