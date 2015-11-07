@@ -1,9 +1,15 @@
 Before:
 
-test bench_alice               ... bench:  12,611,319 ns/iter (+/- 1,182,416)
-test bench_monkey              ... bench:     112,342 ns/iter (+/- 23,078)
+test bench_alice               ... bench:  11,801,719 ns/iter (+/- 1,348,880)
+test bench_bitstring_version_0 ... bench:         125 ns/iter (+/- 29)
+test bench_bitstring_version_1 ... bench:         148 ns/iter (+/- 84)
+test bench_bitstring_version_2 ... bench:         127 ns/iter (+/- 54)
+test bench_monkey              ... bench:      97,598 ns/iter (+/- 13,658)
 
 After:
 
-test bench_alice               ... bench:  11,755,989 ns/iter (+/- 1,137,982)
-test bench_monkey              ... bench:      98,630 ns/iter (+/- 14,143)
+test bench_alice               ... bench:  11,603,086 ns/iter (+/- 1,120,652)
+test bench_bitstring_version_0 ... bench:         126 ns/iter (+/- 46)
+test bench_bitstring_version_1 ... bench:         146 ns/iter (+/- 62)
+test bench_bitstring_version_2 ... bench:         125 ns/iter (+/- 10)
+test bench_monkey              ... bench:      96,182 ns/iter (+/- 14,372)

@@ -1,8 +1,6 @@
 use ::bitreader::BitReader;
 use std::io::Read;
 
-mod pseudocode;
-
 // For Huffman codes used in the Brotli spec, is seems that the length of a
 // code is at most 10 bits (max alphabet size is 704).
 // For this simple use case, we don't need/want to deal with type parameters.
@@ -73,7 +71,7 @@ impl Tree {
 				Err(e) => return Err(e),
 			};
 
-			let lookup_index = pseudocode::LUT_PSEUDO_CODE[pseudo_code];
+			let lookup_index = pseudo_code - 1;
 
 			if lookup_index > self.buf.len() - 1 {
 				return Ok(None);
