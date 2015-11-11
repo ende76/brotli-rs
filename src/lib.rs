@@ -1485,7 +1485,7 @@ impl<R: Read> Decompressor<R> {
 		let output_window = self.output_window.as_ref().unwrap();
 		let max_allowed_distance = cmp::min(count_output, window_size);
 
-		if distance <=  max_allowed_distance {
+		if distance <= max_allowed_distance {
 			let mut window = vec![0; copy_length];
 			let l = cmp::min(distance, copy_length);
 
@@ -1581,7 +1581,7 @@ impl<R: Read> Decompressor<R> {
 				State::IsLast(false) => {
 					self.meta_block.header.is_last = Some(false);
 
-					// debug(&format!("ISLAST = false"));
+					// println!("ISLAST = false");
 
 					self.state = match self.parse_m_nibbles() {
 						Ok(state) => state,
