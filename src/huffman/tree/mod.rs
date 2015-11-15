@@ -1,9 +1,6 @@
 use ::bitreader::BitReader;
 use std::io::Read;
 
-// For Huffman codes used in the Brotli spec, is seems that the length of a
-// code is at most 10 bits (max alphabet size is 704).
-// For this simple use case, we don't need/want to deal with type parameters.
 pub type Symbol = u16;
 
 #[derive(Debug, Clone, PartialEq)]
