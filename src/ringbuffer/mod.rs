@@ -1,103 +1,103 @@
 use std::error::Error;
 use std::fmt;
-use std::fmt::{ Debug, Display, Formatter };
+use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq)]
 /// RingBuffer to store elements in a fixed size list, overwriting
 /// the oldest elements when its capacity is full.
 pub struct RingBuffer<T: Copy + Debug> {
-	buf: Vec<T>,
-	pos: usize,
-	cap: usize,
+    buf: Vec<T>,
+    pos: usize,
+    cap: usize,
 }
 
 impl<T: Copy + Debug> RingBuffer<T> {
-	/// Creates a new RingBuffer populated with the elements in v,
-	/// with capacity == v.len().
-	/// Takes ownership of v.
-	pub fn from_vec(v: Vec<T>) -> RingBuffer<T> {
-		let c = v.len();
-		RingBuffer {
-			buf: v.iter().rev().map(|&b| b).collect::<Vec<_>>(),
-			pos: c - 1,
-			cap: c,
-		}
-	}
+    /// Creates a new RingBuffer populated with the elements in v,
+    /// with capacity == v.len().
+    /// Takes ownership of v.
+    pub fn from_vec(v: Vec<T>) -> RingBuffer<T> {
+        let c = v.len();
+        RingBuffer {
+            buf: v.iter().rev().map(|&b| b).collect::<Vec<_>>(),
+            pos: c - 1,
+            cap: c,
+        }
+    }
 
-	/// Creates a new RingBuffer with a max capacity of c.
-	pub fn with_capacity(c: usize) -> RingBuffer<T> {
-		RingBuffer {
-			buf: Vec::with_capacity(c),
-			pos: 0,
-			cap: c,
-		}
-	}
+    /// Creates a new RingBuffer with a max capacity of c.
+    pub fn with_capacity(c: usize) -> RingBuffer<T> {
+        RingBuffer {
+            buf: Vec::with_capacity(c),
+            pos: 0,
+            cap: c,
+        }
+    }
 
-	/// Returns a result containing the nth element from the back,
-	/// i.e. the 0th element is the last element that has been pushed.
-	/// Returns RingBufferError::ParameterExceededSize, if n exceeds
-	/// the buffers length or number of stored items.
-	pub fn nth(&self, n: usize) -> Result<&T, RingBufferError> {
-		let len = self.buf.len();
+    /// Returns a result containing the nth element from the back,
+    /// i.e. the 0th element is the last element that has been pushed.
+    /// Returns RingBufferError::ParameterExceededSize, if n exceeds
+    /// the buffers length or number of stored items.
+    pub fn nth(&self, n: usize) -> Result<&T, RingBufferError> {
+        let len = self.buf.len();
 
-		if n >= len {
-			Err(RingBufferError::ParameterExceededSize)
-		} else {
-			Ok(&self.buf[(self.pos + len - n) % len])
-		}
-	}
+        if n >= len {
+            Err(RingBufferError::ParameterExceededSize)
+        } else {
+            Ok(&self.buf[(self.pos + len - n) % len])
+        }
+    }
 
-	pub fn slice_tail(&self, n: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
-		let len = self.buf.len();
+    pub fn slice_tail(&self, n: usize, buf: &mut [T]) -> Result<(), RingBufferError> {
+        let len = self.buf.len();
 
-		if n >= len {
-			Err(RingBufferError::ParameterExceededSize)
-		} else {
-			for (i, mut item) in buf.iter_mut().enumerate() {
-				*item = self.buf[(self.pos + len - n + i) % len];
-			}
-			Ok(())
-		}
-	}
+        if n >= len {
+            Err(RingBufferError::ParameterExceededSize)
+        } else {
+            for (i, mut item) in buf.iter_mut().enumerate() {
+                *item = self.buf[(self.pos + len - n + i) % len];
+            }
+            Ok(())
+        }
+    }
 
-	/// Pushes an item to the end of the ring buffer.
-	pub fn push(&mut self, item: T) {
-		let len = self.buf.len();
-		if len < self.cap {
-			self.buf.push(item);
-			self.pos = len;
-		} else {
-			self.pos = (self.pos + 1) % len;
-			self.buf[self.pos] = item;
-		}
-	}
+    /// Pushes an item to the end of the ring buffer.
+    pub fn push(&mut self, item: T) {
+        let len = self.buf.len();
+        if len < self.cap {
+            self.buf.push(item);
+            self.pos = len;
+        } else {
+            self.pos = (self.pos + 1) % len;
+            self.buf[self.pos] = item;
+        }
+    }
 }
 
 #[test]
 fn should_retrieve_last_item() {
-	let mut buf = RingBuffer::with_capacity(2);
-	let item = 15;
-	buf.push(item);
+    let mut buf = RingBuffer::with_capacity(2);
+    let item = 15;
+    buf.push(item);
 
-	assert_eq!(item, *buf.nth(0).unwrap());;
+    assert_eq!(item, *buf.nth(0).unwrap());;
 }
 
 #[derive(Debug, Clone, PartialEq)]
 enum RingBufferError {
-	ParameterExceededSize,
+    ParameterExceededSize,
 }
 
 impl Display for RingBufferError {
-	fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
 
-		fmt.write_str(self.description())
-	}
+        fmt.write_str(self.description())
+    }
 }
 
 impl Error for RingBufferError {
-	fn description(&self) -> &str {
-		match *self {
-			RingBufferError::ParameterExceededSize => "Index parameter exceeded ring buffer size",
-		}
-	}
+    fn description(&self) -> &str {
+        match *self {
+            RingBufferError::ParameterExceededSize => "Index parameter exceeded ring buffer size",
+        }
+    }
 }
