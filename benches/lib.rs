@@ -8,11 +8,11 @@ use test::Bencher;
 
 #[bench]
 fn bench_monkey(b: &mut Bencher) {
-	use std::io::{ Cursor, Read };
-	use brotli::Decompressor;
+    use std::io::{Cursor, Read};
+    use brotli::Decompressor;
 
-	b.iter(|| {
-		let brotli_stream = Cursor::new(vec![
+    b.iter(|| {
+        let brotli_stream = Cursor::new(vec![
 			0x1b, 0x4a, 0x03, 0x00, 0x8c, 0x94, 0x6e, 0xde, 0xb4, 0xd7, 0x96, 0xb1, 0x78, 0x86, 0xf2, 0x2d,
 			0xe1, 0x1a, 0xbc, 0x0b, 0x1c, 0xba, 0xa9, 0xc7, 0xf7, 0xcc, 0x6e, 0xb2, 0x42, 0x34, 0x51, 0x44,
 			0x8b, 0x4e, 0x13, 0x08, 0xa0, 0xcd, 0x6e, 0xe8, 0x2c, 0xa5, 0x53, 0xa1, 0x9c, 0x5d, 0x2c, 0x1d,
@@ -42,80 +42,84 @@ fn bench_monkey(b: &mut Bencher) {
 			0x0d, 0xee, 0x61, 0x2e, 0x2e, 0x19, 0x09, 0xc2, 0x03,
 		]);
 
-		let mut decompressed = &mut String::new();
-		Decompressor::new(brotli_stream).read_to_string(&mut decompressed)
-	});
+        let mut decompressed = &mut String::new();
+        Decompressor::new(brotli_stream).read_to_string(&mut decompressed)
+    });
 }
 
 #[bench]
 fn bench_alice(b: &mut Bencher) {
-	use std::io::Read;
-	use brotli::Decompressor;
+    use std::io::Read;
+    use brotli::Decompressor;
 
-	b.iter(|| {
-		let mut input = Vec::new();
-		let _ = Decompressor::new(std::fs::File::open("data/alice29.txt.compressed").unwrap()).read_to_end(&mut input);
-	});
+    b.iter(|| {
+        let mut input = Vec::new();
+        let _ = Decompressor::new(std::fs::File::open("data/alice29.txt.compressed").unwrap())
+                    .read_to_end(&mut input);
+    });
 }
 
 
 #[bench]
 fn bench_bitstring_version_0(b: &mut Bencher) {
-	fn bit_string_from_code_and_length(code: usize, len: usize) -> Vec<bool> {
-		let mut bits = vec![false; len];
+    fn bit_string_from_code_and_length(code: usize, len: usize) -> Vec<bool> {
+        let mut bits = vec![false; len];
 
-		for i in 0..len {
-			bits[len - i - 1] = (code >> i) & 1 == 1;
-		}
+        for i in 0..len {
+            bits[len - i - 1] = (code >> i) & 1 == 1;
+        }
 
-		bits
-	}
+        bits
+    }
 
-	b.iter(|| {
-		assert_eq!(vec![false, false], bit_string_from_code_and_length(0b00, 2));
-		assert_eq!(vec![false, true, true], bit_string_from_code_and_length(0b011, 3));
-		assert_eq!(vec![true, false, false, true, true], bit_string_from_code_and_length(0b10011, 5));
-	});
+    b.iter(|| {
+        assert_eq!(vec![false, false], bit_string_from_code_and_length(0b00, 2));
+        assert_eq!(vec![false, true, true],
+                   bit_string_from_code_and_length(0b011, 3));
+        assert_eq!(vec![true, false, false, true, true],
+                   bit_string_from_code_and_length(0b10011, 5));
+    });
 }
 
 #[bench]
 fn bench_bitstring_version_1(b: &mut Bencher) {
-	fn bit_string_from_code_and_length(code: usize, len: usize) -> Vec<bool> {
-		let mut bits = Vec::with_capacity(len);
+    fn bit_string_from_code_and_length(code: usize, len: usize) -> Vec<bool> {
+        let mut bits = Vec::with_capacity(len);
 
-		for i in 0..len {
-			bits.push(code >> (len - 1 - i) & 1 == 1);
-		}
+        for i in 0..len {
+            bits.push(code >> (len - 1 - i) & 1 == 1);
+        }
 
-		bits
-	}
+        bits
+    }
 
-	b.iter(|| {
-		assert_eq!(vec![false, false], bit_string_from_code_and_length(0b00, 2));
-		assert_eq!(vec![false, true, true], bit_string_from_code_and_length(0b011, 3));
-		assert_eq!(vec![true, false, false, true, true], bit_string_from_code_and_length(0b10011, 5));
-	});
+    b.iter(|| {
+        assert_eq!(vec![false, false], bit_string_from_code_and_length(0b00, 2));
+        assert_eq!(vec![false, true, true],
+                   bit_string_from_code_and_length(0b011, 3));
+        assert_eq!(vec![true, false, false, true, true],
+                   bit_string_from_code_and_length(0b10011, 5));
+    });
 }
 
 #[bench]
 fn bench_bitstring_version_2(b: &mut Bencher) {
-	fn bit_string_from_code_and_length(code: usize, bits: &mut[bool]) {
-		let len = bits.len();
-		for (i, mut b) in bits.iter_mut().enumerate() {
-			*b = code & (1 << (len - 1 - i)) != 0;
-		}
-	}
+    fn bit_string_from_code_and_length(code: usize, bits: &mut [bool]) {
+        let len = bits.len();
+        for (i, mut b) in bits.iter_mut().enumerate() {
+            *b = code & (1 << (len - 1 - i)) != 0;
+        }
+    }
 
-	b.iter(|| {
-		let mut bits_0 = vec![false; 2];
-		bit_string_from_code_and_length(0b00, &mut bits_0);
-		assert_eq!(vec![false, false], bits_0);
-		let mut bits_1 = vec![false; 3];
-		bit_string_from_code_and_length(0b011, &mut bits_1);
-		assert_eq!(vec![false, true, true], bits_1);
-		let mut bits_2 = vec![false; 5];
-		bit_string_from_code_and_length(0b10011, &mut bits_2);
-		assert_eq!(vec![true, false, false, true, true], bits_2);
-	});
+    b.iter(|| {
+        let mut bits_0 = vec![false; 2];
+        bit_string_from_code_and_length(0b00, &mut bits_0);
+        assert_eq!(vec![false, false], bits_0);
+        let mut bits_1 = vec![false; 3];
+        bit_string_from_code_and_length(0b011, &mut bits_1);
+        assert_eq!(vec![false, true, true], bits_1);
+        let mut bits_2 = vec![false; 5];
+        bit_string_from_code_and_length(0b10011, &mut bits_2);
+        assert_eq!(vec![true, false, false, true, true], bits_2);
+    });
 }
-
