@@ -683,7 +683,10 @@ impl<R: Read> Decompressor<R> {
 
 			if code_lengths[i] > 0 {
 
-				sum += 32 >> code_lengths[i];
+				{
+					let rcl = code_lengths[i];
+					sum += 32 >> rcl;
+				}
 				len_non_zero_codelengths += 1;
 
 				// println!("code length = {:?}", code_lengths[i]);
@@ -1509,13 +1512,19 @@ impl<R: Read> Decompressor<R> {
 			let n_words_length = if copy_length < 4 {
 				0
 			} else {
-				1 << BROTLI_DICTIONARY_SIZE_BITS_BY_LENGTH[copy_length]
+				{
+					let rhs = BROTLI_DICTIONARY_SIZE_BITS_BY_LENGTH[copy_length];
+					1 << rhs
+				}
 			};
 			let index = word_id % n_words_length;
 			let offset_from = BROTLI_DICTIONARY_OFFSETS_BY_LENGTH[copy_length] + index * copy_length;
 			let offset_to = BROTLI_DICTIONARY_OFFSETS_BY_LENGTH[copy_length] + (index + 1) * copy_length;
 			let base_word = &BROTLI_DICTIONARY[offset_from..offset_to];
-			let transform_id = word_id >> BROTLI_DICTIONARY_SIZE_BITS_BY_LENGTH[copy_length];
+			let transform_id = {
+				let rhs = BROTLI_DICTIONARY_SIZE_BITS_BY_LENGTH[copy_length];
+			 	word_id >> rhs
+			};
 
 			if transform_id > 120 {
 				return Err(DecompressorError::InvalidTransformId);
