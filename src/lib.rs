@@ -413,7 +413,7 @@ impl<R: Read> Decompressor<R> {
 		match self.header.wbits_codes.lookup_symbol(&mut self.in_stream) {
 			Ok(Some(symbol)) => Ok(State::WBits(symbol as WBits)),
 			Ok(None) => Err(DecompressorError::UnexpectedEOF),
-			Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
@@ -1203,7 +1203,7 @@ impl<R: Read> Decompressor<R> {
 		match self.meta_block.prefix_trees_insert_and_copy_lengths.as_ref().unwrap()[btype].lookup_symbol(&mut self.in_stream) {
 			Ok(Some(symbol)) => Ok(State::InsertAndCopyLength(symbol)),
 			Ok(None) => Err(DecompressorError::ParseErrorInsertAndCopyLength),
-			Err(_) => return Err(DecompressorError::UnexpectedEOF),
+			Err(_) => Err(DecompressorError::UnexpectedEOF),
 		}
 	}
 
