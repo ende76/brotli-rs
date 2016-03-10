@@ -9,6 +9,11 @@ Compression provides a \<Read\>-struct to wrap a Brotli-compressed stream. A con
 ## Changelog
 
 
+###v0.3.21 -> v0.3.22
+----------------
+
+Bug with metablock structure not getting fully reset when encountering a new metablock in the brotli stream, reported and fixed by [Daniel](https://github.com/danielrh).
+
 ###v0.3.20 -> v0.3.21
 ----------------
 
