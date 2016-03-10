@@ -1570,8 +1570,7 @@ impl<R: Read> Decompressor<R> {
 					self.state = State::HeaderMetaBlockBegin;
 				},
 				State::HeaderMetaBlockBegin => {
-					self.meta_block.header = MetaBlockHeader::new();
-					self.meta_block.count_output = 0;
+					self.meta_block = MetaBlock::new();
 					self.state = match self.parse_is_last() {
 						Ok(state) => state,
 						Err(e) => return Err(e),
