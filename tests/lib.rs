@@ -307,6 +307,24 @@ fn should_decompress_alice29_txt() {
 }
 
 #[test]
+/// Brotli: metablock_reset.txt
+/// introduces a new metablock with a different max number of btype_l
+fn should_decompress_metablock_reset() {
+	use std::io::{ Read };
+	use brotli::Decompressor;
+
+	let brotli_stream = std::fs::File::open("data/metablock_reset.compressed").unwrap();
+
+	let mut decompressed = &mut Vec::new();
+	let _ = Decompressor::new(brotli_stream).read_to_end(&mut decompressed);
+
+	let mut expected = &mut Vec::new();
+	let _ = std::fs::File::open("data/metablock_reset").unwrap().read_to_end(&mut expected);
+
+	assert_eq!(expected, decompressed);
+}
+
+#[test]
 #[should_panic(expected = "Code length check sum")]
 /// frewsxcv_00: fuzzer-test
 /// exposes endless-loop vulnerability, if runlength code lengths are not bounded by alphabet size
