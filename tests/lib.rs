@@ -189,6 +189,20 @@ fn should_decompress_ukkonooa() {
 	assert_eq!("ukko nooa, ukko nooa oli kunnon mies, kun han meni saunaan, pisti laukun naulaan, ukko nooa, ukko nooa oli kunnon mies.", decompressed);
 }
 
+
+#[test]
+/// Dictionary unending
+fn should_decompress_ends_with_truncated_dictionary() {
+	use std::io::{ Cursor, Read };
+	use brotli::Decompressor;
+
+	let brotli_stream = Cursor::new(vec![0x1b, 0x0d, 0x00, 0x00, 0x24, 0x00, 0x62, 0x98, 0x28, 0x0b, 0x3f]);
+	let mut decompressed = &mut String::new();
+	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+
+	assert_eq!("number of diff", decompressed);
+}
+
 #[test]
 /// Brotli: monkey
 /// introduces static dictionary reference, multiple trees for literals
