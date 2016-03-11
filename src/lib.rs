@@ -1723,6 +1723,7 @@ impl<R: Read> Decompressor<R> {
 							self.buf.push_front(*literal);
 						}
 						self.output_window.as_mut().unwrap().push(*literal);
+						self.literal_buf.push(*literal);
 						self.count_output += 1;
 					}
 
