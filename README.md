@@ -8,6 +8,11 @@ Compression provides a \<Read\>-struct to wrap a Brotli-compressed stream. A con
 
 ## Changelog
 
+###v0.3.22 -> v0.3.23
+----------------
+
+Bug with literal buffer not being populated when processing uncompressed metablock, bug where a valid stream could be rejected too early as oversized, if the last bytes happened to be shortened by an OMIT-type transformation after the early check, reported and fixed by [Daniel](https://github.com/danielrh).
+
 
 ###v0.3.21 -> v0.3.22
 ----------------
