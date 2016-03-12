@@ -1723,6 +1723,7 @@ impl<R: Read> Decompressor<R> {
 							self.buf.push_front(*literal);
 						}
 						self.output_window.as_mut().unwrap().push(*literal);
+						self.literal_buf.push(*literal);
 						self.count_output += 1;
 					}
 
@@ -2032,12 +2033,7 @@ impl<R: Read> Decompressor<R> {
 
 					// println!("(m_len, insert_length, copy_length) = {:?}", (m_len, self.meta_block.insert_length.unwrap() as usize, self.meta_block.copy_length.unwrap() as usize));
 
-					if (m_len < self.meta_block.count_output + self.meta_block.insert_length.unwrap() as usize) ||
-					   (m_len > self.meta_block.count_output + self.meta_block.insert_length.unwrap() as usize &&
-					    m_len < self.meta_block.count_output +
-					            self.meta_block.insert_length.unwrap() as usize +
-					            self.meta_block.copy_length.unwrap() as usize)
-					{
+					if m_len < self.meta_block.count_output + self.meta_block.insert_length.unwrap() as usize {
 
 						return Err(DecompressorError::ExceededExpectedBytes);
 					}

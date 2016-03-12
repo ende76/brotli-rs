@@ -86,6 +86,44 @@ fn should_decompress_to_empty_string_16() {
 
 #[test]
 /// Brotli: Empty file
+#[should_panic(expected="More uncompressed bytes than expected in meta-block")]
+fn should_reject_invalid_stream_with_transformed_item_trailing_bytes() {
+	use std::io::{ Cursor, Read };
+	use brotli::Decompressor;
+
+	let brotli_stream = Cursor::new(vec![
+		0x1b, 0x14, 0x00, 0x00, 0x24, 0x00, 0x62, 0x98, 0xc8, 0x0e
+	]);
+
+	let mut decompressed = &mut String::new();
+	let result = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+
+	match result {
+		Err(e) => panic!("{:?}", e),
+		_ => {},
+	}
+}
+
+#[test]
+/// Brotli: transformed dictionary item to be 1 byte longer
+fn should_decompress_transformed_item() {
+	use std::io::{ Cursor, Read };
+	use brotli::Decompressor;
+
+	let brotli_stream = Cursor::new(vec![
+		0x1b, 0x15, 0x00, 0x00, 0x24, 0x00, 0x62, 0x98, 0xc8, 0x0e
+	]);
+
+	let mut decompressed = &mut String::new();
+	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+
+	assert_eq!("often referred to as  ", decompressed);
+}
+
+
+
+#[test]
+/// Brotli: Empty file
 #[should_panic(expected="Expected end-of-stream, but stream did not end")]
 fn should_reject_invalid_stream_with_trailing_bytes() {
 	use std::io::{ Cursor, Read };
@@ -187,6 +225,20 @@ fn should_decompress_ukkonooa() {
 	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
 
 	assert_eq!("ukko nooa, ukko nooa oli kunnon mies, kun han meni saunaan, pisti laukun naulaan, ukko nooa, ukko nooa oli kunnon mies.", decompressed);
+}
+
+
+#[test]
+/// Dictionary unending
+fn should_decompress_ends_with_truncated_dictionary() {
+	use std::io::{ Cursor, Read };
+	use brotli::Decompressor;
+
+	let brotli_stream = Cursor::new(vec![0x1b, 0x0d, 0x00, 0x00, 0x24, 0x00, 0x62, 0x98, 0x28, 0x0b, 0x3f]);
+	let mut decompressed = &mut String::new();
+	let _ = Decompressor::new(brotli_stream).read_to_string(&mut decompressed);
+
+	assert_eq!("number of diff", decompressed);
 }
 
 #[test]
