@@ -83,7 +83,7 @@ fn should_retrieve_last_item() {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum RingBufferError {
+pub enum RingBufferError {
 	ParameterExceededSize,
 }
 

@@ -319,7 +319,7 @@ fn should_decompress_quickfox_repeated() {
 	let mut expected = &mut String::new();
 	let _ = std::fs::File::open("data/quickfox_repeated").unwrap().read_to_string(&mut expected);
 
-	assert_eq!(expected, decompressed);
+	assert!(expected == decompressed);
 }
 
 #[test]
@@ -337,7 +337,7 @@ fn should_decompress_asyoulik_txt() {
 	let mut expected = &mut Vec::new();
 	let _ = std::fs::File::open("data/asyoulik.txt").unwrap().read_to_end(&mut expected);
 
-	assert_eq!(expected, decompressed);
+	assert!(expected == decompressed);
 }
 
 #[test]
@@ -355,7 +355,7 @@ fn should_decompress_alice29_txt() {
 	let mut expected = &mut Vec::new();
 	let _ = std::fs::File::open("data/alice29.txt").unwrap().read_to_end(&mut expected);
 
-	assert_eq!(expected, decompressed);
+	assert!(expected == decompressed);
 }
 
 #[test]
@@ -373,7 +373,7 @@ fn should_decompress_metablock_reset() {
 	let mut expected = &mut Vec::new();
 	let _ = std::fs::File::open("data/metablock_reset").unwrap().read_to_end(&mut expected);
 
-	assert_eq!(expected, decompressed);
+	assert!(expected == decompressed);
 }
 
 #[test]
