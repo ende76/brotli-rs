@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Decompressor","Wraps an input stream and provides methods for decompressing."]]});
